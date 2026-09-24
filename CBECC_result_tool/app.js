@@ -252,10 +252,10 @@ const CSV_GASES = [
   'Generators -- General',
 ];
 
-// Standard 67-column 3-header rows matching user's updated template
+// Standard 68-column 3-header rows: Scenario, one selected area, then the energy columns.
 // Row 1: Dashboard Categories
 const CSV_HEADER_ROW_1 = [
-  "", "", "",
+  "", "", "", "Building Area",
   "Space Heating", "",
   "Space Heating", "",
   "Space Cooling", "",
@@ -292,7 +292,7 @@ const CSV_HEADER_ROW_1 = [
 
 // Row 2: HTM Categories
 const CSV_HEADER_ROW_2 = [
-  "Run ID", "Rev #", "Run ID",
+  "Run ID", "Rev #", "Scenario", "Building Area [ft2]",
   "Heating -- General", "",
   "Heating -- Boiler Parasitic", "",
   "Cooling -- General", "",
@@ -329,7 +329,7 @@ const CSV_HEADER_ROW_2 = [
 
 // Row 3: Units
 const CSV_HEADER_ROW_3 = [
-  "", "", "",
+  "", "", "", "[ft2]",
   "[kWh]", "[W]",
   "[kWh]", "[W]",
   "[kWh]", "[W]",
@@ -432,6 +432,8 @@ const state = {
   baselineScenario: null,  // Baseline scenario name for variance calculations
   averageBaselines: true,  // Calculate and display average of ab1-ab4 (default true)
   selectedFolderName: '',  // Current project folder name
+  buildingAreaType: 'conditioned',
+  buildingArea: 0,
 
   // Mode 1 & 3: CSV and Append State
   loadedCsvRows: [],                  // Array of raw CSV rows (header 1, header 2, data rows)
@@ -443,9 +445,8 @@ const state = {
   method3NewScenarios: [],            // Extracted HTM scenarios pending append
   method3ExtractedRunScenarios: [],   // Scenarios of new run available in checklist for appending
 
-  viewMode: 'compare',     // 'compare' | 'single' | 'variance'
-  energyUnit: 'kBtu',       // 'kBtu' | 'kWh' | 'therm'
-  fuelType: 'both',        // 'both' | 'electricity' | 'gas' | 'split'
+  viewMode: 'compare',     // 'compare' | 'stacked'
+  energyUnit: 'kBtu',       // 'kBtu' | 'kWh' | 'therm' | 'eui'
   chartType: 'bar',        // 'bar' | 'stacked-bar' | 'doughnut' | 'horizontalBar' | 'radar'
 
   cleanLabels: true,       // Strip redundant suffixes
@@ -489,6 +490,8 @@ const elements = {
   browseFilesBtn: document.getElementById('browse-files-btn'),
   loadSampleFolderBtn: document.getElementById('load-sample-folder-btn'),
   folderStatusBadge: document.getElementById('folder-status-badge'),
+  unmappedWarning: document.getElementById('unmapped-warning'),
+  scenarioAreas: document.getElementById('scenario-areas'),
 
   // Mode 3: Append
   appendCsvInput: document.getElementById('append-csv-input'),
@@ -520,7 +523,6 @@ const elements = {
 
   viewModeControl: document.getElementById('view-mode-control'),
   unitControl: document.getElementById('unit-control'),
-  fuelSelect: document.getElementById('fuel-select'),
   chartTypeSelect: document.getElementById('chart-type-select'),
 
   singleScenarioGroup: document.getElementById('single-scenario-group'),
@@ -605,6 +607,18 @@ function formatNumRaw(val, decimals = 2) {
   return Number(val).toFixed(decimals);
 }
 
+function extractBuildingAreas(doc) {
+  const areas = { totalBuildingArea: 0, netConditionedBuildingArea: 0 };
+  doc.querySelectorAll('tr').forEach(row => {
+    const cells = Array.from(row.querySelectorAll('td, th')).map(cell => cell.textContent.trim());
+    if (cells.length < 2) return;
+    const label = cells[0].replace(/\s+/g, ' ').trim().toLowerCase();
+    if (label === 'total building area') areas.totalBuildingArea = parseNumber(cells[1]);
+    if (label === 'net conditioned building area') areas.netConditionedBuildingArea = parseNumber(cells[1]);
+  });
+  return areas;
+}
+
 /**
  * Client-side HTML parser for CBECC EAp2-4/5 Performance Rating Method Compliance tables.
  * Extracts: Electricity Energy Use [kWh], Electricity Demand [W],
@@ -613,6 +627,7 @@ function formatNumRaw(val, decimals = 2) {
 function extractComplianceFromHTML(htmlString, sourceName = '') {
   const parser = new DOMParser();
   const doc = parser.parseFromString(htmlString, 'text/html');
+  const areas = extractBuildingAreas(doc);
 
   const tables = doc.querySelectorAll('table');
   let targetTable = null;
@@ -686,6 +701,14 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
 
   // Build the aggregated 11 dashboard compliance categories
   const categoryMap = buildDashboardCategoryMap(rawCategoryMap);
+  const mappedRawCategories = new Set(FIXED_CATEGORIES.flatMap(fc => [
+    ...(fc.elecHtmCategories || []), ...(fc.gasHtmCategories || []), fc.raw
+  ]));
+  const unmappedCategories = Object.keys(rawCategoryMap).filter(cat => {
+    const row = rawCategoryMap[cat];
+    return !row.isTotal && !mappedRawCategories.has(cat) &&
+      (Math.abs(row.elecKwh) > 0 || Math.abs(row.gasTherm) > 0);
+  });
 
   // Calculate totals from dashboard categories
   let totalElecKwh = 0;
@@ -703,8 +726,10 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
 
   return {
     sourceName,
+    ...areas,
     categoryMap,
     rawCategoryMap,
+    unmappedCategories,
     summary: {
       totalElectricity_kWh:  totalElecKwh,
       totalNaturalGas_therm: totalGasTherm,
@@ -721,22 +746,30 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
  * Return the energy value for a category row given current fuel/unit selection.
  * Used only by the chart (not the fixed table).
  */
-function getCategoryEnergyValue(catData, fuel = state.fuelType, unit = state.energyUnit) {
+function getCategoryEnergyValue(catData, unit = state.energyUnit) {
   if (!catData) return 0;
-  if (fuel === 'electricity') {
-    if (unit === 'kWh')   return catData.elecKwh;
-    if (unit === 'therm') return catData.elecKwh * CONVERSIONS.KWH_TO_THERM;
-    return catData.elecKbtu;
-  }
-  if (fuel === 'gas') {
-    if (unit === 'kWh')   return catData.gasTherm * CONVERSIONS.THERM_TO_KWH;
-    if (unit === 'therm') return catData.gasTherm;
-    return catData.gasKbtu;
-  }
-  // 'both' combined
-  if (unit === 'kWh')   return catData.elecKwh + catData.gasTherm * CONVERSIONS.THERM_TO_KWH;
-  if (unit === 'therm') return catData.elecKwh * CONVERSIONS.KWH_TO_THERM + catData.gasTherm;
+  if (unit === 'kWh') return catData.elecKwh;
+  if (unit === 'therm') return catData.gasTherm;
   return catData.totalKbtu;
+}
+
+function getScenarioCategoryEnergyValue(sc, catData) {
+  const value = getCategoryEnergyValue(catData, state.energyUnit === 'eui' ? 'kBtu' : state.energyUnit);
+  if (state.energyUnit === 'eui') return sc.buildingArea > 0 ? value / sc.buildingArea : 0;
+  return value;
+}
+
+function getScenarioEnergyValue(sc, unit = state.energyUnit) {
+  const value = unit === 'kWh' ? sc.summary.totalElectricity_kBtu
+    : unit === 'therm' ? sc.summary.totalNaturalGas_kBtu : sc.summary.grandTotal_kBtu;
+  if (unit === 'eui') return sc.buildingArea > 0 ? value / sc.buildingArea : 0;
+  if (unit === 'kWh') return value / CONVERSIONS.KWH_TO_KBTU;
+  if (unit === 'therm') return value / CONVERSIONS.THERM_TO_KBTU;
+  return value;
+}
+
+function getDisplayUnitLabel() {
+  return state.energyUnit === 'eui' ? 'kBtu/ft2 (Total Combined)' : state.energyUnit;
 }
 
 // =============================================================================
@@ -790,7 +823,7 @@ function setupTabs() {
 }
 
 // =============================================================================
-// CSV Parsing: Standard 67-Column Results.csv
+// CSV Parsing: Standard 68-Column Results.csv (with legacy 67-column compatibility)
 // =============================================================================
 
 function parseCsvToRows(text) {
@@ -859,16 +892,22 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
     (rows[0] && rows[0][3] && rows[0][3].trim().length > 0 && !rows[0][0])
   );
   const dataStartIdx = isThreeHeader ? 3 : 2;
+  const hasSingleAreaColumn = isThreeHeader && /scenario/i.test(rows[1][2] || '') && /building area/i.test(rows[1][3] || '') && !/net conditioned|total building/i.test(rows[1][3] || '');
+  const hasLegacyAreaColumns = isThreeHeader && /scenario/i.test(rows[1][2] || '') && /total building area/i.test(rows[1][3] || '');
+  const scenarioColumn = 2;
+  const energyColumnStart = hasSingleAreaColumn ? 4 : hasLegacyAreaColumns ? 5 : 3;
 
   const scenarios = [];
 
   for (let i = dataStartIdx; i < rows.length; i++) {
     const row = rows[i];
-    if (row.length < 3 || !row[2]) continue;
+    if (row.length <= scenarioColumn || !row[scenarioColumn]) continue;
 
     const runId = (row[0] || 'Run_01').trim();
     const rev = (row[1] || 'Rev.0').trim();
-    const rawScenario = row[2].trim();
+    const rawScenario = row[scenarioColumn].trim();
+    const totalBuildingArea = hasSingleAreaColumn ? parseNumber(row[3]) : hasLegacyAreaColumns ? parseNumber(row[3]) : 0;
+    const netConditionedBuildingArea = hasSingleAreaColumn ? 0 : hasLegacyAreaColumns ? parseNumber(row[4]) : 0;
     const scenarioName = formatCompositeName
       ? `${runId}_${rev}_${rawScenario}`
       : rawScenario;
@@ -876,8 +915,8 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
     const rawCategoryMap = {};
 
     CSV_ELECS.forEach((catRaw, idx) => {
-      const kwhCol = 3 + (idx * 2);
-      const wCol   = 4 + (idx * 2);
+      const kwhCol = energyColumnStart + (idx * 2);
+      const wCol   = energyColumnStart + 1 + (idx * 2);
       const kwh = kwhCol < row.length ? parseNumber(row[kwhCol]) : 0;
       const w   = wCol < row.length ? parseNumber(row[wCol]) : 0;
       rawCategoryMap[catRaw] = {
@@ -894,8 +933,8 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
     });
 
     CSV_GASES.forEach((catRaw, idx) => {
-      const thermCol = 55 + (idx * 2);
-      const btuhCol  = 56 + (idx * 2);
+      const thermCol = energyColumnStart + 52 + (idx * 2);
+      const btuhCol  = energyColumnStart + 53 + (idx * 2);
       const therm = thermCol < row.length ? parseNumber(row[thermCol]) : 0;
       const btuh  = btuhCol < row.length ? parseNumber(row[btuhCol]) : 0;
       if (!rawCategoryMap[catRaw]) {
@@ -941,6 +980,9 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
       revision: rev,
       isCalculatedAverage: isAvg,
       fileBaseName: `${scenarioName}.csv`,
+      totalBuildingArea,
+      netConditionedBuildingArea,
+      buildingArea: totalBuildingArea,
       categoryMap,
       rawCategoryMap,
       summary: {
@@ -960,13 +1002,13 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
 }
 
 // =============================================================================
-// Helper: Format a Scenario as a 67-Column CSV Row
+// Helper: Format a Scenario as a 68-Column CSV Row
 // =============================================================================
 
 function formatScenarioCsvRow(sc, runId, revision, rawScenarioName = '') {
   const cmap = sc.rawCategoryMap || sc.categoryMap || {};
   const scName = rawScenarioName || sc.rawScenarioName || sc.scenarioName;
-  const row = [runId, revision, scName];
+  const row = [runId, revision, scName, formatNumRaw(sc.buildingArea, 2)];
 
   // 26 electricity columns (kWh + W per category)
   CSV_ELECS.forEach(catRaw => {
@@ -1076,6 +1118,7 @@ async function handleFileList(files) {
   if (elements.csvExportLocation) {
     elements.csvExportLocation.value = parentFolderName;
   }
+  state.csvExportDirHandle = null;
 
   showToast('Parsing Files...', `Reading ${htmFiles.length} files in browser...`, '⏳');
   const parsedResults = [];
@@ -1631,6 +1674,8 @@ function computeBaselineAverageForGroup(baselines, runId = '', revision = '') {
     revision,
     isCalculatedAverage: true,
     fileBaseName: `${compositeName}.csv`,
+    totalBuildingArea: baselines.reduce((sum, sc) => sum + (sc.totalBuildingArea || 0), 0) / count,
+    netConditionedBuildingArea: baselines.reduce((sum, sc) => sum + (sc.netConditionedBuildingArea || 0), 0) / count,
     categoryMap,
     rawCategoryMap,
     summary: {
@@ -1643,6 +1688,42 @@ function computeBaselineAverageForGroup(baselines, runId = '', revision = '') {
       naturalGasSharePercent:  grandTotalKbtu > 0 ? (totalGasKbtu  / grandTotalKbtu) * 100 : 0,
     }
   };
+}
+
+function renderScenarioAreas() {
+  if (!elements.scenarioAreas) return;
+  elements.scenarioAreas.innerHTML = `
+    <div class="scenario-area-field"><label for="building-area-type">Area Basis</label><select id="building-area-type" class="select-dropdown"><option value="total" ${state.buildingAreaType === 'total' ? 'selected' : ''}>Total Building Area</option><option value="conditioned" ${state.buildingAreaType === 'conditioned' ? 'selected' : ''}>Net Conditioned Building Area</option></select></div>
+    <div class="scenario-area-field"><label for="building-area-value">Building Area (ft2)</label><input id="building-area-value" type="number" min="0" step="0.01" data-area="buildingArea" value="${state.buildingArea || ''}"></div>`;
+  elements.scenarioAreas.querySelectorAll('input[data-area]').forEach(input => {
+    input.addEventListener('input', event => {
+      const property = event.target.dataset.area;
+      state[property] = parseNumber(event.target.value);
+      state.scenarios.forEach(sc => { sc[property] = state[property]; });
+      updateDashboard();
+    });
+  });
+  const typeSelect = document.getElementById('building-area-type');
+  typeSelect.addEventListener('change', event => {
+    state.buildingAreaType = event.target.value;
+    state.buildingArea = state.scenarios[0]
+      ? (state.buildingAreaType === 'conditioned' ? state.scenarios[0].netConditionedBuildingArea : state.scenarios[0].totalBuildingArea)
+      : 0;
+    state.scenarios.forEach(sc => { sc.buildingArea = state.buildingArea; });
+    renderScenarioAreas();
+    updateDashboard();
+  });
+}
+
+function renderUnmappedWarning() {
+  if (!elements.unmappedWarning) return;
+  const categories = [...new Set(state.scenarios.flatMap(sc => sc.unmappedCategories || []))];
+  if (categories.length === 0) {
+    elements.unmappedWarning.classList.add('hidden');
+    return;
+  }
+  elements.unmappedWarning.textContent = `WARNING: The extracted table contains unmapped end-use categories. Review the mapping before relying on totals: ${categories.join(', ')}`;
+  elements.unmappedWarning.classList.remove('hidden');
 }
 
 
@@ -1694,6 +1775,15 @@ function loadParsedScenarios(scenarios) {
   // Sort canonical: grouped by run, ap first, then Baseline Avg, then ab1-ab4
   const sorted = sortScenarios(filtered);
   state.scenarios = sorted;
+  const firstScenario = sorted[0] || filtered[0];
+  state.buildingArea = firstScenario
+    ? (state.buildingAreaType === 'conditioned' ? firstScenario.netConditionedBuildingArea : firstScenario.totalBuildingArea)
+    : 0;
+  state.scenarios.forEach(sc => {
+    sc.buildingArea = state.buildingArea;
+  });
+  renderScenarioAreas();
+  renderUnmappedWarning();
 
   // Option: average of the 4 baseline results, default to select it and not selecting ab1, ab2, ab3, ab4
   state.averageBaselines = elements.averageBaselinesToggle ? elements.averageBaselinesToggle.checked : true;
@@ -1843,7 +1933,6 @@ function renderDropdownSelectors() {
 
 function updateDashboard() {
   const activeScenariosList = state.scenarios.filter(s => {
-    if (state.viewMode === 'single') return s.scenarioName === state.activeScenario;
     return state.selectedScenarios.includes(s.scenarioName);
   });
 
@@ -1855,7 +1944,8 @@ function updateDashboard() {
 }
 
 function updateMetrics(scenarios) {
-  document.querySelectorAll('.unit-label').forEach(el => el.textContent = state.energyUnit);
+  const displayUnit = getDisplayUnitLabel();
+  document.querySelectorAll('.unit-label').forEach(el => el.textContent = displayUnit);
 
   let totalElecKwh  = 0;
   let totalGasTherm = 0;
@@ -1870,7 +1960,7 @@ function updateMetrics(scenarios) {
     FIXED_CATEGORIES.forEach(fc => {
       const r = sc.categoryMap[fc.raw];
       if (r && !r.isTotal) {
-        categoryTotals[fc.raw] = (categoryTotals[fc.raw] || 0) + r.totalKbtu;
+        categoryTotals[fc.raw] = (categoryTotals[fc.raw] || 0) + getScenarioCategoryEnergyValue(sc, r);
       }
     });
   });
@@ -1887,26 +1977,32 @@ function updateMetrics(scenarios) {
   let displayElec  = avgElecKwh;
   let displayGas   = avgGasTherm;
 
-  if (state.energyUnit === 'kWh') {
-    displayTotal = avgKbtu / CONVERSIONS.KWH_TO_KBTU;
-    displayGas   = avgGasTherm * CONVERSIONS.THERM_TO_KWH;
+  if (state.energyUnit === 'eui') {
+    displayTotal = scenarios.reduce((sum, sc) => sum + getScenarioEnergyValue(sc), 0) / count;
+    displayElec = displayTotal;
+    displayGas = displayTotal;
+  } else if (state.energyUnit === 'kWh') {
+    displayTotal = avgElecKwh;
+    displayElec  = avgElecKwh;
+    displayGas   = avgGasTherm;
   } else if (state.energyUnit === 'therm') {
-    displayTotal = avgKbtu / CONVERSIONS.THERM_TO_KBTU;
+    displayTotal = avgGasTherm;
     displayElec  = avgElecKwh * CONVERSIONS.KWH_TO_THERM;
+    displayGas   = avgGasTherm;
   } else {
     displayElec = totalElecKbtu;
     displayGas  = totalGasKbtu;
   }
 
-  elements.metricTotalEnergy.textContent  = `${formatNum(displayTotal, 0)} ${state.energyUnit}`;
+  elements.metricTotalEnergy.textContent  = `${formatNum(displayTotal, 0)} ${displayUnit}`;
   elements.metricTotalSubtitle.textContent = count > 1 ? `Average across ${count} selected scenarios` : `${scenarios[0].scenarioName} total energy`;
 
   const elecPct = avgKbtu > 0 ? (totalElecKbtu / avgKbtu) * 100 : 0;
   const gasPct  = avgKbtu > 0 ? (totalGasKbtu  / avgKbtu) * 100 : 0;
 
-  elements.metricElecVal.textContent     = `${formatNum(displayElec, 0)} ${state.energyUnit}`;
+  elements.metricElecVal.textContent     = `${formatNum(displayElec, 0)} ${displayUnit}`;
   elements.metricElecPercent.textContent = `${formatNum(elecPct, 1)}% of total energy`;
-  elements.metricGasVal.textContent      = `${formatNum(displayGas, 0)} ${state.energyUnit}`;
+  elements.metricGasVal.textContent      = `${formatNum(displayGas, 0)} ${displayUnit}`;
   elements.metricGasPercent.textContent  = `${formatNum(gasPct, 1)}% of total energy`;
 
   let topCat = '-';
@@ -1915,13 +2011,11 @@ function updateMetrics(scenarios) {
     if (val > topVal) { topVal = val; topCat = cat; }
   });
 
-  const peakDisplayVal = state.energyUnit === 'kWh'   ? (topVal / count) / CONVERSIONS.KWH_TO_KBTU  :
-                         state.energyUnit === 'therm'  ? (topVal / count) / CONVERSIONS.THERM_TO_KBTU :
-                                                         (topVal / count);
+  const peakDisplayVal = topVal / count;
 
   const fc = FIXED_CATEGORIES.find(c => c.raw === topCat);
   elements.metricPeakCategory.textContent = fc ? (state.cleanLabels ? fc.label : fc.raw) : topCat;
-  elements.metricPeakVal.textContent      = `${formatNum(peakDisplayVal, 0)} ${state.energyUnit} avg`;
+  elements.metricPeakVal.textContent      = `${formatNum(peakDisplayVal, 0)} ${displayUnit} avg`;
 }
 
 // =============================================================================
@@ -1933,7 +2027,7 @@ function getChartCategories(scenarios) {
     if (!state.hideZeroes) return true;
     return scenarios.some(sc => {
       const r = sc.categoryMap[fc.raw];
-      return r && getCategoryEnergyValue(r, state.fuelType, state.energyUnit) !== 0;
+      return r && getScenarioCategoryEnergyValue(sc, r) !== 0;
     });
   });
 }
@@ -1941,66 +2035,20 @@ function getChartCategories(scenarios) {
 function updateChart(scenarios) {
   if (state.chartInstance) { state.chartInstance.destroy(); }
 
-  elements.chartUnitBadge.textContent  = `Units: ${state.energyUnit}`;
-  elements.chartMainTitle.textContent  = state.viewMode === 'compare'  ?
-    `Side-by-Side Scenario Comparison (${state.energyUnit})` :
-    state.viewMode === 'variance' ?
-    `Variance vs Baseline: ${state.baselineScenario} (%)` :
-    `Energy Breakdown: ${state.activeScenario} (${state.energyUnit})`;
+  const displayUnit = getDisplayUnitLabel();
+  elements.chartUnitBadge.textContent  = `Units: ${displayUnit}`;
+  elements.chartMainTitle.textContent = `${state.viewMode === 'stacked' ? 'Stacked' : 'Clustered'} End-Use Energy by Scenario (${displayUnit})`;
 
   const visibleCats = getChartCategories(scenarios);
   const labels = visibleCats.map(fc => state.cleanLabels ? fc.label : fc.raw);
 
   let chartConfig = {};
 
-  // Stacked Fuel Breakdown
-  if (state.fuelType === 'split') {
-    const datasets = [];
-    scenarios.forEach((sc, idx) => {
-      const elecData = visibleCats.map(fc => {
-        const r = sc.categoryMap[fc.raw];
-        return r ? (state.energyUnit === 'kWh' ? r.elecKwh : state.energyUnit === 'therm' ? r.elecKwh * CONVERSIONS.KWH_TO_THERM : r.elecKbtu) : 0;
-      });
-      const gasData = visibleCats.map(fc => {
-        const r = sc.categoryMap[fc.raw];
-        return r ? (state.energyUnit === 'kWh' ? r.gasTherm * CONVERSIONS.THERM_TO_KWH : state.energyUnit === 'therm' ? r.gasTherm : r.gasKbtu) : 0;
-      });
-      datasets.push({ label: `${sc.scenarioName} - Elec`, data: elecData, backgroundColor: '#007AC9', stack: `stack-${idx}` });
-      datasets.push({ label: `${sc.scenarioName} - Gas`,  data: gasData,  backgroundColor: '#E67E22', stack: `stack-${idx}` });
-    });
-    chartConfig = { type: 'bar', data: { labels, datasets }, options: getCommonChartOptions(true) };
-  }
-
-  // Variance Mode
-  else if (state.viewMode === 'variance') {
-    const baselineSc = state.scenarios.find(s => s.scenarioName === state.baselineScenario) || scenarios[0];
-    const isDark = document.body.classList.contains('dark-theme');
-    const datasets = scenarios.filter(s => s.scenarioName !== baselineSc.scenarioName).map((sc, idx) => {
-      const deltaData = visibleCats.map(fc => {
-        const baseRow = baselineSc.categoryMap[fc.raw];
-        const currRow = sc.categoryMap[fc.raw];
-        const baseVal = baseRow ? getCategoryEnergyValue(baseRow, state.fuelType, state.energyUnit) : 0;
-        const currVal = currRow ? getCategoryEnergyValue(currRow, state.fuelType, state.energyUnit) : 0;
-        if (baseVal === 0) return 0;
-        return Number((((currVal - baseVal) / baseVal) * 100).toFixed(2));
-      });
-      const color = getScenarioColor(sc.scenarioName, idx);
-      return { label: `${sc.scenarioName} vs ${baselineSc.scenarioName} (Δ %)`, data: deltaData, backgroundColor: color, borderColor: color, borderWidth: 1 };
-    });
-    chartConfig = {
-      type: 'bar', data: { labels, datasets },
-      options: { ...getCommonChartOptions(false), scales: {
-        y: { title: { display: true, text: 'Percentage Difference (%)', color: isDark ? '#A0B0C0' : '#4F6173', font: { weight: '600' } }, ticks: { color: isDark ? '#A0B0C0' : '#4F6173', callback: v => `${v}%` } },
-        x: { ticks: { color: isDark ? '#A0B0C0' : '#4F6173' } }
-      }}
-    };
-  }
-
   // Donut
-  else if (state.chartType === 'doughnut') {
+  if (state.chartType === 'doughnut') {
     const targetSc = scenarios[0];
     const isDark = document.body.classList.contains('dark-theme');
-    const dataVals = visibleCats.map(fc => { const r = targetSc.categoryMap[fc.raw]; return r ? getCategoryEnergyValue(r, state.fuelType, state.energyUnit) : 0; });
+    const dataVals = visibleCats.map(fc => { const r = targetSc.categoryMap[fc.raw]; return r ? getScenarioCategoryEnergyValue(targetSc, r) : 0; });
     chartConfig = {
       type: 'doughnut',
       data: { labels, datasets: [{ data: dataVals, backgroundColor: CHART_COLORS.slice(0, visibleCats.length), borderWidth: 2, borderColor: isDark ? '#161D26' : '#FFFFFF' }] },
@@ -2015,7 +2063,7 @@ function updateChart(scenarios) {
   else if (state.chartType === 'horizontalBar') {
     const datasets = scenarios.map((sc, idx) => {
       const color = getScenarioColor(sc.scenarioName, idx);
-      return { label: sc.scenarioName, data: visibleCats.map(fc => { const r = sc.categoryMap[fc.raw]; return r ? getCategoryEnergyValue(r, state.fuelType, state.energyUnit) : 0; }), backgroundColor: color, borderColor: color, borderWidth: 1 };
+      return { label: sc.scenarioName, data: visibleCats.map(fc => { const r = sc.categoryMap[fc.raw]; return r ? getScenarioCategoryEnergyValue(sc, r) : 0; }), backgroundColor: color, borderColor: color, borderWidth: 1 };
     });
     chartConfig = { type: 'bar', data: { labels, datasets }, options: { ...getCommonChartOptions(false), indexAxis: 'y' } };
   }
@@ -2025,7 +2073,7 @@ function updateChart(scenarios) {
     const isDark = document.body.classList.contains('dark-theme');
     const datasets = scenarios.map((sc, idx) => {
       const color = getScenarioColor(sc.scenarioName, idx);
-      return { label: sc.scenarioName, data: visibleCats.map(fc => { const r = sc.categoryMap[fc.raw]; return r ? getCategoryEnergyValue(r, state.fuelType, state.energyUnit) : 0; }), backgroundColor: `${color}33`, borderColor: color, borderWidth: 2, pointBackgroundColor: color };
+      return { label: sc.scenarioName, data: visibleCats.map(fc => { const r = sc.categoryMap[fc.raw]; return r ? getScenarioCategoryEnergyValue(sc, r) : 0; }), backgroundColor: `${color}33`, borderColor: color, borderWidth: 2, pointBackgroundColor: color };
     });
     chartConfig = {
       type: 'radar', data: { labels, datasets },
@@ -2035,12 +2083,27 @@ function updateChart(scenarios) {
 
   // Standard Grouped or Stacked Bar
   else {
-    const isStacked = state.chartType === 'stacked-bar';
-    const datasets = scenarios.map((sc, idx) => {
-      const color = getScenarioColor(sc.scenarioName, idx);
-      return { label: sc.scenarioName, data: visibleCats.map(fc => { const r = sc.categoryMap[fc.raw]; return r ? getCategoryEnergyValue(r, state.fuelType, state.energyUnit) : 0; }), backgroundColor: color, borderColor: color, borderWidth: 1 };
-    });
-    chartConfig = { type: 'bar', data: { labels, datasets }, options: getCommonChartOptions(isStacked) };
+    if (state.viewMode === 'stacked') {
+      const scenarioLabels = scenarios.map(sc => sc.scenarioName);
+      const datasets = visibleCats.map((fc, categoryIndex) => ({
+        label: state.cleanLabels ? fc.label : fc.raw,
+        data: scenarios.map(sc => {
+          const row = sc.categoryMap[fc.raw];
+          return row ? getScenarioCategoryEnergyValue(sc, row) : 0;
+        }),
+        backgroundColor: CHART_COLORS[categoryIndex % CHART_COLORS.length],
+        borderColor: CHART_COLORS[categoryIndex % CHART_COLORS.length],
+        borderWidth: 1,
+        stack: 'end-uses'
+      }));
+      chartConfig = { type: 'bar', data: { labels: scenarioLabels, datasets }, options: getCommonChartOptions(true) };
+    } else {
+      const datasets = scenarios.map((sc, idx) => {
+        const color = getScenarioColor(sc.scenarioName, idx);
+        return { label: sc.scenarioName, data: visibleCats.map(fc => { const r = sc.categoryMap[fc.raw]; return r ? getScenarioCategoryEnergyValue(sc, r) : 0; }), backgroundColor: color, borderColor: color, borderWidth: 1 };
+      });
+      chartConfig = { type: 'bar', data: { labels, datasets }, options: getCommonChartOptions(false) };
+    }
   }
 
   state.chartInstance = new Chart(elements.energyChartCanvas, chartConfig);
@@ -2054,7 +2117,7 @@ function getCommonChartOptions(stacked = false) {
     responsive: true, maintainAspectRatio: false,
     scales: {
       x: { stacked, grid: { color: isDark ? '#202A36' : '#F0F4F8' }, ticks: { color: textColor, font: { family: 'Yu Gothic, Raleway, Inter', size: 11, weight: '500' } } },
-      y: { stacked, title: { display: true, text: `Energy Consumption (${state.energyUnit})`, color: textColor, font: { family: 'Yu Gothic, Raleway, Inter', weight: '600' } }, grid: { color: gridColor }, ticks: { color: textColor, font: { family: 'Yu Gothic, Raleway, Inter', size: 11 } } }
+      y: { stacked, title: { display: true, text: `Energy Consumption (${getDisplayUnitLabel()})`, color: textColor, font: { family: 'Yu Gothic, Raleway, Inter', weight: '600' } }, grid: { color: gridColor }, ticks: { color: textColor, font: { family: 'Yu Gothic, Raleway, Inter', size: 11 } } }
     },
     plugins: {
       legend: { labels: { color: textColor, font: { family: 'Yu Gothic, Raleway, Inter', weight: '600' }, boxWidth: 14 } },
@@ -2188,7 +2251,6 @@ function exportExcelWorkbook() {
   }
 
   const activeScenariosList = state.scenarios.filter(s => {
-    if (state.viewMode === 'single') return s.scenarioName === state.activeScenario;
     return state.selectedScenarios.includes(s.scenarioName);
   });
 
@@ -2318,7 +2380,7 @@ function exportExcelWorkbook() {
 // =============================================================================
 
 /**
- * Builds the wide 67-column CSV rows matching the compliance log template.
+ * Builds the wide 68-column CSV rows matching the compliance log template.
  * Two header rows + one data row per scenario in scope.
  * Scope: 'all' (ap, ab1-ab4, Baseline Avg) or 'active' (selected scenarios only).
  */
@@ -2366,7 +2428,10 @@ async function browseFolderForExport() {
     return;
   }
   try {
-    const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const dirHandle = await window.showDirectoryPicker({
+      id: 'cbecc-result-tool-export-v2',
+      mode: 'readwrite'
+    });
     state.csvExportDirHandle = dirHandle;
     if (elements.csvExportLocation) {
       elements.csvExportLocation.value = dirHandle.name;
@@ -2377,7 +2442,7 @@ async function browseFolderForExport() {
     }
   } catch (err) {
     if (err.name !== 'AbortError') {
-      showToast('Folder Error', err.message, '⚠️');
+      showToast('Folder Error', 'The folder picker could not open that location. Please choose the parent folder where the model folder is stored.', '⚠️');
     }
     // User cancelled — clear status if nothing was previously chosen
     if (!state.csvExportDirHandle && elements.csvLocationStatus) {
@@ -2443,8 +2508,8 @@ async function downloadCSVLog() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  const location = (elements.csvExportLocation && elements.csvExportLocation.value.trim()) || '(Downloads folder)';
-  showToast('CSV Downloaded', `${filename} — ${dataRowCount} scenario row(s). Check your Downloads folder.`, '💾');
+  const location = (elements.csvExportLocation && elements.csvExportLocation.value.trim()) || '(browser download location)';
+  showToast('CSV Downloaded', `${filename} — ${dataRowCount} scenario row(s). Browser downloads are controlled by the browser; choose the model folder's parent with Browse to save there directly.`, '💾');
 }
 
 function downloadChartImage() {
@@ -2642,8 +2707,6 @@ function setupEventListeners() {
       elements.viewModeControl.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       state.viewMode = btn.dataset.value;
-      elements.singleScenarioGroup.classList.toggle('hidden', state.viewMode !== 'single');
-      elements.baselineScenarioGroup.classList.toggle('hidden', state.viewMode !== 'variance');
       updateDashboard();
     });
   });
@@ -2657,9 +2720,6 @@ function setupEventListeners() {
       updateDashboard();
     });
   });
-
-  // Fuel Type
-  elements.fuelSelect.addEventListener('change', e => { state.fuelType = e.target.value; updateDashboard(); });
 
   // Chart Type
   elements.chartTypeSelect.addEventListener('change', e => { state.chartType = e.target.value; updateDashboard(); });

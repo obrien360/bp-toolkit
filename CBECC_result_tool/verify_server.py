@@ -4,7 +4,7 @@ import json
 html_req = urllib.request.urlopen('http://127.0.0.1:8080/')
 html_content = html_req.read().decode('utf-8')
 print('HTML status:', html_req.status, 'length:', len(html_content))
-assert 'Energy Performance Rating Compliance Tool' in html_content
+assert 'CBECC Result Tool' in html_content
 
 api_req = urllib.request.urlopen('http://127.0.0.1:8080/api/scan')
 api_json = json.loads(api_req.read().decode('utf-8'))

@@ -4,7 +4,7 @@ cd /d "%~dp0"
 
 echo ===================================================
 echo   O'Brien360 - CBECC Result Tool
-echo   Energy Performance Rating Compliance Tool
+echo   CBECC Result Tool
 echo ===================================================
 echo.
 

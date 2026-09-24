@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>O'Brien360 | Energy Performance Rating Compliance Tool</title>
+  <title>O'Brien360 | CBECC Result Tool</title>
   <!-- Google Fonts: Raleway, Lato, Inter, JetBrains Mono (with Yu Gothic fallbacks) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,7 +28,7 @@
         </div>
         <div class="brand-divider"></div>
         <div class="title-meta">
-          <h1 class="header-title">Energy Performance Rating Compliance Tool</h1>
+          <h1 class="header-title">CBECC Result Tool</h1>
           <p class="header-subtitle">EAp2-4/5 Performance Rating Method Compliance Extraction & Analysis</p>
           <span class="header-tagline">Sustainability Expertise for the Built Environment</span>
         </div>
@@ -81,7 +81,7 @@
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
             </div>
             <div class="drop-text">
-              <strong>Select or Drag & Drop</strong> a Results CSV file (67-column LEED format)
+              <strong>Select or Drag & Drop</strong> a Results CSV file (68-column LEED format)
             </div>
             <div class="drop-actions">
               <button type="button" id="browse-csv-btn" class="btn btn-primary">Choose CSV File</button>
@@ -112,6 +112,7 @@
           </div>
         </div>
         <div id="folder-status-badge" class="source-status-info hidden"></div>
+        <div id="unmapped-warning" class="unmapped-warning hidden" role="alert"></div>
       </div>
 
       <!-- Mode 3: Append Model Run to CSV -->
@@ -206,6 +207,14 @@
 
     <!-- Main Dashboard Area -->
     <main id="dashboard-area" class="dashboard-area hidden">
+
+      <section class="card scenario-areas-card">
+        <div class="card-header">
+          <div class="card-title-group"><span class="card-step-badge">2</span><h2>Building Areas</h2></div>
+          <span class="table-subtitle">Editable values used by the EUI units and CSV export</span>
+        </div>
+        <div id="scenario-areas" class="scenario-areas"></div>
+      </section>
       
       <!-- Interactive Controls Toolbar -->
       <section class="card controls-card">
@@ -215,9 +224,8 @@
           <div class="control-group">
             <label class="control-label">View Mode</label>
             <div class="segmented-control" id="view-mode-control">
-              <button class="seg-btn active" data-value="compare">Side-by-Side Comparison</button>
-              <button class="seg-btn" data-value="single">Single Scenario</button>
-              <button class="seg-btn" data-value="variance">Baseline Delta (%)</button>
+              <button class="seg-btn active" data-value="compare">Clustered Column</button>
+              <button class="seg-btn" data-value="stacked">Stacked Column</button>
             </div>
           </div>
 
@@ -226,20 +234,10 @@
             <label class="control-label">Energy Unit</label>
             <div class="segmented-control unit-control" id="unit-control">
               <button class="seg-btn active" data-unit="kBtu">kBtu (Total Combined)</button>
+              <button class="seg-btn" data-unit="eui">kBtu/ft2 (Total Combined)</button>
               <button class="seg-btn" data-unit="kWh">kWh (Electricity)</button>
               <button class="seg-btn" data-unit="therm">therm (Natural Gas)</button>
             </div>
-          </div>
-
-          <!-- Fuel Breakdown / Type -->
-          <div class="control-group">
-            <label class="control-label">Fuel Type</label>
-            <select id="fuel-select" class="select-dropdown">
-              <option value="both" selected>Total Energy (Electricity + Gas)</option>
-              <option value="electricity">Electricity Only [kWh / converted]</option>
-              <option value="gas">Natural Gas Only [therm / converted]</option>
-              <option value="split">Fuel Breakdown (Stacked Elec & Gas)</option>
-            </select>
           </div>
 
           <!-- Chart Type Selector -->
@@ -247,7 +245,6 @@
             <label class="control-label">Chart Type</label>
             <select id="chart-type-select" class="select-dropdown">
               <option value="bar" selected>📊 Grouped Bar Chart</option>
-              <option value="stacked-bar">🥞 Stacked Bar Chart</option>
               <option value="doughnut">🍩 Donut Breakdown</option>
               <option value="horizontalBar">📶 Horizontal Ranked Bar</option>
               <option value="radar">🕸️ Energy Profile (Radar)</option>
@@ -385,13 +382,13 @@
             <input type="text" id="csv-export-filename" class="text-input csv-input" value="example_project_folder - Results.csv" />
           </div>
           <div class="csv-field-group">
-            <label for="csv-export-location" class="input-label">Export Location</label>
+            <label for="csv-export-location" class="input-label">Export Location (Model Folder Parent)</label>
             <div class="csv-location-row">
-              <button type="button" id="csv-browse-folder-btn" class="btn btn-secondary csv-browse-btn" title="Pick destination folder in file explorer">
+              <button type="button" id="csv-browse-folder-btn" class="btn btn-secondary csv-browse-btn" title="Choose the parent folder of the selected model folder">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 Browse…
               </button>
-              <input type="text" id="csv-export-location" class="text-input csv-input" placeholder="Default: parent folder" readonly />
+              <input type="text" id="csv-export-location" class="text-input csv-input" placeholder="Default: parent folder of model folder" readonly />
             </div>
             <span id="csv-location-status" class="csv-location-status"></span>
           </div>
@@ -417,7 +414,7 @@
             Export CSV
           </button>
         </div>
-        <p class="csv-note">Default file name is based on the project folder; default location is the parent folder. Formatted with 3 header rows and 67 columns per scenario row.</p>
+        <p class="csv-note">Default file name is based on the project folder; default location is the parent folder. Formatted with 3 header rows and 69 columns per scenario row.</p>
       </section>
 
       <!-- Append to CSV Log Section (Method 3) -->

@@ -1074,6 +1074,57 @@ body.dark-theme .seg-btn.active {
   gap: 16px;
 }
 
+.scenario-areas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.scenario-area-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.scenario-area-name {
+  font-weight: 700;
+  color: var(--text-heading);
+}
+
+.scenario-area-field label {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.scenario-area-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.unmapped-warning {
+  margin-top: 12px;
+  padding: 16px 18px;
+  border: 3px solid #C0392B;
+  background: #FDECEC;
+  color: #8E2118;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+body.dark-theme .unmapped-warning {
+  background: #3A1E22;
+  color: #FFB4B0;
+}
+
 .metric-card {
   padding: 16px 18px;
   display: flex;
