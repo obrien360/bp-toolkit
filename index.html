@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>O'Brien360 Tools Suite</title>
-  <meta http-equiv="refresh" content="0; url=CBECC_result_tool/">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@600;700;800&display=swap" rel="stylesheet">
@@ -12,20 +11,22 @@
     :root {
       --ob-green: #8CBD3A;
       --ob-blue: #4D76AD;
-      --ob-dark: #1E293B;
+      --ob-dark: #0F172A;
+      --ob-slate: #1E293B;
       --ob-bg: #F8FAFC;
+      --ob-border: #E2E8F0;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--ob-bg);
-      color: var(--ob-dark);
+      color: var(--ob-slate);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 32px 24px;
     }
     .brand-stripe {
       position: fixed;
@@ -34,74 +35,197 @@
       right: 0;
       height: 5px;
       background: linear-gradient(90deg, #8CBD3A 0%, #4D76AD 33%, #62B8A4 66%, #793E6D 100%);
+      z-index: 100;
     }
-    .portal-card {
-      background: #FFFFFF;
-      border: 1px solid #E2E8F0;
-      border-radius: 16px;
-      padding: 40px;
-      max-width: 520px;
+    .portal-container {
+      max-width: 960px;
       width: 100%;
       text-align: center;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);
     }
     .portal-logo {
-      max-width: 220px;
+      max-width: 240px;
       height: auto;
       margin-bottom: 24px;
     }
     h1 {
       font-family: 'Raleway', sans-serif;
-      font-size: 24px;
+      font-size: 28px;
       font-weight: 800;
-      color: #0F172A;
+      color: var(--ob-dark);
       margin-bottom: 8px;
     }
-    p {
+    .portal-subtitle {
       color: #64748B;
-      font-size: 14px;
+      font-size: 15px;
+      max-width: 600px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+    .tools-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 24px;
+      text-align: left;
+    }
+    .tool-card {
+      background: #FFFFFF;
+      border: 1px solid var(--ob-border);
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .tool-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.12);
+      border-color: #CBD5E1;
+    }
+    .tool-card.featured {
+      border: 2px solid var(--ob-green);
+    }
+    .tool-badge {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-green { background: #f2f8ea; color: #4b7811; }
+    .badge-blue { background: #edf3fa; color: #3d6191; }
+    .tool-icon {
+      font-size: 32px;
+      margin-bottom: 16px;
+    }
+    .tool-title {
+      font-family: 'Raleway', sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--ob-dark);
+      margin-bottom: 8px;
+    }
+    .tool-desc {
+      color: #64748B;
+      font-size: 13.5px;
       line-height: 1.6;
       margin-bottom: 24px;
+      flex: 1;
     }
-    .btn-launch {
-      display: inline-flex;
+    .tool-features {
+      list-style: none;
+      margin-bottom: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 12.5px;
+      color: #475569;
+    }
+    .tool-features li {
+      display: flex;
       align-items: center;
       gap: 8px;
-      background: linear-gradient(135deg, var(--ob-green), #7aa82f);
+    }
+    .tool-features li::before {
+      content: "✓";
+      color: var(--ob-green);
+      font-weight: 800;
+    }
+    .btn-launch {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       color: #FFFFFF;
       font-weight: 600;
-      font-size: 15px;
-      padding: 12px 28px;
+      font-size: 14px;
+      padding: 12px 24px;
       border-radius: 8px;
       text-decoration: none;
-      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      transition: all 0.15s ease;
+    }
+    .btn-green {
+      background: linear-gradient(135deg, var(--ob-green), #7aa82f);
       box-shadow: 0 4px 12px rgba(140, 189, 58, 0.35);
     }
-    .btn-launch:hover {
-      transform: translateY(-1px);
+    .btn-green:hover {
       box-shadow: 0 6px 16px rgba(140, 189, 58, 0.45);
     }
-    .redirect-note {
+    .btn-blue {
+      background: linear-gradient(135deg, var(--ob-blue), #3d6191);
+      box-shadow: 0 4px 12px rgba(77, 118, 173, 0.35);
+    }
+    .btn-blue:hover {
+      box-shadow: 0 6px 16px rgba(77, 118, 173, 0.45);
+    }
+    .portal-footer {
+      margin-top: 40px;
       font-size: 12px;
       color: #94A3B8;
-      margin-top: 16px;
     }
   </style>
-  <script>
-    // Immediate redirect
-    window.location.replace("CBECC_result_tool/");
-  </script>
 </head>
 <body>
   <div class="brand-stripe"></div>
-  <div class="portal-card">
+  <div class="portal-container">
     <img src="CBECC_result_tool/assets/ob360_logo_bar.png" alt="O'Brien360" class="portal-logo" onerror="this.style.display='none'">
-    <h1>O'Brien360 Tools</h1>
-    <p>Opening the <strong>CBECC Result Tool</strong> (Energy Performance Rating Compliance Tool)...</p>
-    <a href="CBECC_result_tool/" class="btn-launch">
-      Launch CBECC Result Tool &rarr;
-    </a>
-    <div class="redirect-note">If not redirected automatically, click the button above.</div>
+    <h1>O'Brien360 Engineering Tools</h1>
+    <p class="portal-subtitle">Internal engineering, sustainability, and computational geometry applications for building design & compliance.</p>
+
+    <div class="tools-grid">
+
+      <!-- Tool 1: CBECC Result Tool -->
+      <div class="tool-card">
+        <span class="tool-badge badge-blue">Compliance</span>
+        <div class="tool-icon">⚡</div>
+        <div>
+          <h2 class="tool-title">CBECC Result Tool</h2>
+          <p class="tool-desc">LEED EAp2-4/5 & CBECC performance rating method compliance aggregator. Parses simulation output HTML reports to produce standard 67-column LEED MDL CSVs and Excel summaries.</p>
+          <ul class="tool-features">
+            <li>Electricity & Gas end-use breakdowns</li>
+            <li>Dynamic baseline averaging (ab1–ab4)</li>
+            <li>Interactive Chart.js visual summaries</li>
+            <li>LEED standard template CSV / Excel export</li>
+          </ul>
+        </div>
+        <a href="CBECC_result_tool/" class="btn-launch btn-blue">
+          Launch CBECC Result Tool &rarr;
+        </a>
+      </div>
+
+      <!-- Tool 2: Bluebeam PDF to DWG Converter -->
+      <div class="tool-card featured">
+        <span class="tool-badge badge-green">New &bull; CAD Engine</span>
+        <div class="tool-icon">📐</div>
+        <div>
+          <h2 class="tool-title">PDF to Clean DWG Converter</h2>
+          <p class="tool-desc">Converts Bluebeam polygon markup annotations on PDFs into clean, orthogonal single-line DWG/DXF files with closed polyloops for Revit, ArchiCAD, and energy models.</p>
+          <ul class="tool-features">
+            <li>Automatic scale & multi-level layer detection</li>
+            <li>Single-line shared wall deduplication</li>
+            <li>Strict orthogonal snapping (±5°)</li>
+            <li>Guaranteed 0 open ends (clean polyloop)</li>
+            <li>Interactive multi-level overlay inspector</li>
+            <li>Spread-out export (120% spacing) & origin aligned</li>
+          </ul>
+        </div>
+        <a href="PDF_to_DWG/" class="btn-launch btn-green">
+          Launch PDF to DWG Converter &rarr;
+        </a>
+      </div>
+
+    </div>
+
+    <div class="portal-footer">
+      O'Brien360 Tools Suite &bull; Pure Python & Modern Web Architecture
+    </div>
   </div>
 </body>
 </html>

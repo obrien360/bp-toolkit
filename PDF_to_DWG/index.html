@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bluebeam PDF to DWG Converter | O'Brien360</title>
+  <meta name="description" content="Convert Bluebeam architectural zoning polygon markup annotations on PDF into clean, orthogonal single-line DWG/DXF files with closed polyloops.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <!-- Brand Stripe -->
+  <div class="brand-stripe"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-left">
+        <a href="../" class="portal-back" title="Return to O'Brien360 Tools Hub">&larr; Tools Portal</a>
+        <div class="brand-badge">
+          <img src="assets/ob360_logo_bar.png" alt="O'Brien360" class="header-logo" onerror="this.style.display='none'">
+          <span class="suite-title">PDF to DWG Converter</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="connectionBadge" class="badge-version">Standalone / Server Ready</span>
+        <button id="btnQuickHelp" class="btn-ghost" title="Conversion rules & help">Help & Rules</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-container">
+    
+    <!-- Top Step Banner -->
+    <div class="workflow-stepper">
+      <div class="step-node active" id="stepNode1">
+        <span class="step-num">1</span>
+        <span class="step-label">Upload & Detect</span>
+      </div>
+      <div class="step-line" id="stepLine1"></div>
+      <div class="step-node" id="stepNode2">
+        <span class="step-num">2</span>
+        <span class="step-label">Scale & Rules</span>
+      </div>
+      <div class="step-line" id="stepLine2"></div>
+      <div class="step-node" id="stepNode3">
+        <span class="step-num">3</span>
+        <span class="step-label">Review & Overlay</span>
+      </div>
+      <div class="step-line" id="stepLine3"></div>
+      <div class="step-node" id="stepNode4">
+        <span class="step-num">4</span>
+        <span class="step-label">Export Clean DWG</span>
+      </div>
+    </div>
+
+    <!-- Section 1: File Input & Quick Demo -->
+    <section class="card section-card" id="sectionUpload">
+      <div class="card-header">
+        <div>
+          <h2>1. Select or Drop Bluebeam Markup PDF</h2>
+          <p class="subtitle">Extracts polygon zoning annotations, page scale calibrations, and Optional Content Group levels.</p>
+        </div>
+        <div class="header-actions">
+          <button id="btnLoadExample" class="btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            Load Example (Zoning.pdf)
+          </button>
+        </div>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".pdf" class="file-input-hidden">
+        <div class="drop-content">
+          <div class="drop-icon">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8CBD3A" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          </div>
+          <h3>Drag and drop Bluebeam PDF here</h3>
+          <p class="drop-hint">or <button type="button" class="btn-browse" id="btnBrowse">browse files</button> from your computer</p>
+          <div class="drop-meta">Supports Bluebeam Revu exported PDFs with polygon area markup & layers</div>
+        </div>
+      </div>
+
+      <!-- File Status Preview (Hidden initially) -->
+      <div id="fileInfoCard" class="file-info-card" style="display: none;">
+        <div class="file-meta-row">
+          <div class="file-name-group">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4D76AD" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+            <span id="activeFileName" class="active-file-name">Zoning.pdf</span>
+          </div>
+          <div class="file-stats">
+            <span id="detectedLevelsBadge" class="tag-badge tag-blue">2 Levels Detected</span>
+            <span id="detectedZonesBadge" class="tag-badge tag-green">32 Zones Extracted</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Drawing Scale & Conversion Configuration -->
+    <section class="card section-card" id="sectionConfig" style="display: none;">
+      <div class="card-header">
+        <div>
+          <h2>2. Conversion Configuration & Snapping Rules</h2>
+          <p class="subtitle">Review detected scale, set base level for multi-story overlay, and customize orthogonal snapping tolerances.</p>
+        </div>
+        <button id="btnRunConversion" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          Generate Clean CAD Geometry
+        </button>
+      </div>
+
+      <div class="config-grid">
+        <!-- Scale Card -->
+        <div class="config-card">
+          <div class="config-card-title">
+            <span class="icon-indicator">📐</span>
+            Drawing Scale Calibration
+          </div>
+          <div class="config-body">
+            <div class="form-group">
+              <label for="selectScalePreset">Scale Preset</label>
+              <select id="selectScalePreset" class="form-select"></select>
+            </div>
+            <div class="form-group">
+              <label for="inputCustomScale">Scale Ratio (PDF points per foot)</label>
+              <div class="input-with-unit">
+                <input type="number" id="inputCustomScale" class="form-input" step="0.25" min="1" value="9.0">
+                <span class="input-unit">pt / ft</span>
+              </div>
+            </div>
+            <div class="scale-detected-info" id="scaleDetectedInfo">
+              <span class="info-label">Detection:</span>
+              <span id="scaleDetectionSource" class="info-value">0.125 in = 1 ft' in" (Annotation Measure)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Levels & Order Card -->
+        <div class="config-card">
+          <div class="config-card-title">
+            <span class="icon-indicator">🏢</span>
+            Levels Hierarchy & Base Level
+          </div>
+          <div class="config-body">
+            <div class="form-group">
+              <label for="selectBaseLevel">Base Reference Level</label>
+              <select id="selectBaseLevel" class="form-select"></select>
+              <span class="field-hint">The reference level starts the conversion and does not snap to another level.</span>
+            </div>
+            <div class="form-group">
+              <label>Layer Snap Bases & Spread-Out Layout</label>
+              <div id="levelOrderList" class="level-order-container"></div>
+              <span class="field-hint">Choose each layer's snap base. Use the arrows to set its left-to-right spread position.</span>
+            </div>
+            <div class="form-group">
+              <label>Resolved Conversion Sequence</label>
+              <div id="conversionSequencePreview" class="conversion-sequence-preview"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Snapping & Tolerances Card -->
+        <div class="config-card">
+          <div class="config-card-title">
+            <span class="icon-indicator">⚡</span>
+            Snapping & Simplification Rules
+          </div>
+          <div class="config-body">
+            <div class="form-group">
+              <div class="label-with-val">
+                <label for="rangeAngleTol">Orthogonal Angle Snap</label>
+                <span id="lblAngleTol" class="val-badge">± 5.0°</span>
+              </div>
+              <input type="range" id="rangeAngleTol" class="form-range" min="1.0" max="15.0" step="0.5" value="5.0">
+              <span class="field-hint">Lines within this angle of H/V are snapped to strict horizontal or vertical.</span>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="inputWallTol">Wall Snap Tol</label>
+                <div class="input-with-unit">
+                  <input type="number" id="inputWallTol" class="form-input" step="0.1" min="0.5" max="5.0" value="2.0">
+                  <span class="input-unit">ft</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="inputOverlayTol">Overlay Snap Tol</label>
+                <div class="input-with-unit">
+                  <input type="number" id="inputOverlayTol" class="form-input" step="0.1" min="0.5" max="5.0" value="1.5">
+                  <span class="input-unit">ft</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="inputSpacingFt">Spread Spacing</label>
+              <div class="input-with-unit">
+                <input type="number" id="inputSpacingFt" class="form-input" step="100" min="100" value="100">
+                <span class="input-unit">ft</span>
+              </div>
+              <span class="field-hint">Horizontal distance between level origins in the spread-out layout.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 3: Interactive CAD Review & Inspection -->
+    <section class="card section-card" id="sectionReview" style="display: none;">
+      <div class="card-header">
+        <div>
+          <h2>3. Interactive CAD Review & Multi-Level Inspection</h2>
+          <p class="subtitle">Inspect single-line wall networks, closed polyloops, shared wall deduplication, and multi-level overlay alignment.</p>
+        </div>
+        <div class="header-actions">
+          <button id="btnExportDWGTop" class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Export DWG / DXF
+          </button>
+        </div>
+      </div>
+
+      <!-- Review Toolbar -->
+      <div class="viewer-toolbar">
+        <div class="toolbar-group">
+          <span class="toolbar-label">View Mode:</span>
+          <div class="btn-segmented">
+            <button class="seg-btn active" data-mode="single" id="btnModeSingle">Level by Level</button>
+            <button class="seg-btn" data-mode="overlay" id="btnModeOverlay">Multi-Level Overlay</button>
+            <button class="seg-btn" data-mode="spread" id="btnModeSpread">Spread-Out (DWG Layout)</button>
+          </div>
+        </div>
+
+        <!-- Single Level Selector (Shown in Level by Level mode) -->
+        <div class="toolbar-group" id="groupLevelSelector">
+          <span class="toolbar-label">Level:</span>
+          <div id="levelPills" class="level-pills"></div>
+        </div>
+
+        <!-- Overlay Selector (Shown in Multi-Level Overlay mode) -->
+        <div class="toolbar-group" id="groupOverlaySelector" style="display: none;">
+          <span class="toolbar-label">Overlay Levels:</span>
+          <div id="overlayCheckboxes" class="overlay-checks"></div>
+          <div class="toggle-switch-wrapper">
+            <label class="switch">
+              <input type="checkbox" id="chkHighlightShared">
+              <span class="slider round"></span>
+            </label>
+            <span class="switch-label">Highlight Shared Walls</span>
+          </div>
+        </div>
+
+        <!-- Layer Toggles -->
+        <div class="toolbar-group toolbar-layers">
+          <span class="toolbar-label">Layers:</span>
+          <label class="layer-chk"><input type="checkbox" id="chkShowWalls" checked> Walls</label>
+          <label class="layer-chk"><input type="checkbox" id="chkShowPolys" checked> Polyloops</label>
+          <label class="layer-chk"><input type="checkbox" id="chkShowLabels" checked> Labels</label>
+          <label class="layer-chk"><input type="checkbox" id="chkShowGrid" checked> Grid</label>
+        </div>
+
+        <!-- Canvas Controls -->
+        <div class="toolbar-group toolbar-zoom">
+          <button id="btnZoomIn" class="btn-icon" title="Zoom In">+</button>
+          <button id="btnZoomOut" class="btn-icon" title="Zoom Out">&minus;</button>
+          <button id="btnZoomFit" class="btn-icon" title="Zoom to Fit">Fit</button>
+          <button id="btnThemeToggle" class="btn-icon" title="Toggle Dark/Light CAD theme">🌙</button>
+        </div>
+      </div>
+
+      <!-- CAD Viewer Main Area -->
+      <div class="cad-viewport-container">
+        <canvas id="cadCanvas" class="cad-canvas"></canvas>
+        <div id="canvasTooltip" class="canvas-tooltip"></div>
+        <div class="canvas-legend" id="canvasLegend"></div>
+        <div class="canvas-statusbar">
+          <div class="status-left">
+            <span id="statusCoord">X: 0.0 ft, Y: 0.0 ft</span>
+            <span class="status-sep">|</span>
+            <span id="statusHoverRoom">Hover over a zone to inspect</span>
+          </div>
+          <div class="status-right">
+            <span id="badgeZeroDangling" class="tag-badge tag-green">✓ 0 Open Ends (Clean Polyloop Guarantee)</span>
+            <span id="badgeOverlayMatch" class="tag-badge tag-blue" style="display: none;">Overlay Match: --%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- QA Stats & Room Breakdown Drawer -->
+      <div class="qa-dashboard">
+        <div class="qa-cards-row">
+          <div class="qa-stat-card">
+            <div class="stat-num" id="statRoomCount">0</div>
+            <div class="stat-desc">Zones / Rooms</div>
+          </div>
+          <div class="qa-stat-card">
+            <div class="stat-num" id="statWallCount">0</div>
+            <div class="stat-desc">Wall Segments (Deduplicated)</div>
+          </div>
+          <div class="qa-stat-card">
+            <div class="stat-num" id="statTotalArea">0 sf</div>
+            <div class="stat-desc">Total Floor Area</div>
+          </div>
+          <div class="qa-stat-card">
+            <div class="stat-num text-success" id="statOpenEnds">0</div>
+            <div class="stat-desc">Open End Lines (Errors)</div>
+          </div>
+          <div class="qa-stat-card">
+            <div class="stat-num text-info" id="statOverlayRate">100%</div>
+            <div class="stat-desc">Perimeter Coincidence</div>
+          </div>
+        </div>
+
+        <!-- Room Inventory Table -->
+        <div class="qa-table-wrapper">
+          <div class="table-header-title">Room & Zone Inventory (Click to highlight on CAD Canvas)</div>
+          <div class="table-scroll">
+            <table class="qa-table" id="qaTable">
+              <thead>
+                <tr>
+                  <th>Color</th>
+                  <th>Zone Name</th>
+                  <th>Level</th>
+                  <th>CAD Clean Area</th>
+                  <th>Bluebeam Original</th>
+                  <th>Delta</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="qaTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Export & Download -->
+    <section class="card section-card" id="sectionExport" style="display: none;">
+      <div class="card-header">
+        <div>
+          <h2>4. Export Clean DWG / DXF Files</h2>
+          <p class="subtitle">Download production-ready CAD files with proper AutoCAD layers, single-line walls, and closed polyloops.</p>
+        </div>
+      </div>
+
+      <div class="export-options-grid">
+        <!-- Spread Out Card (Rule 4) -->
+        <div class="export-card featured">
+          <div class="export-card-badge">Rule 4 Standard</div>
+          <div class="export-icon">📐</div>
+          <h3>Spread-Out DWG / DXF</h3>
+          <p>All levels exported side-by-side horizontally at equal distance (120% of maximum width), with floor title labels. Perfect for 2D architectural review in AutoCAD or Rhino.</p>
+          <div class="export-btn-group">
+            <button id="btnDownloadSpreadDWG" class="btn-primary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Download Spread .DWG
+            </button>
+            <button id="btnDownloadSpreadDXF" class="btn-secondary">Download .DXF</button>
+          </div>
+        </div>
+
+        <!-- Aligned Origin Card -->
+        <div class="export-card">
+          <div class="export-card-badge tag-blue">BIM / Simulation</div>
+          <div class="export-icon">🏢</div>
+          <h3>Aligned / Origin Stacked DWG</h3>
+          <p>All levels share identical coordinate origins (X=0, Y=0). Ideal for direct import into Revit, CBECC-Com, EnergyPlus, OpenStudio, or Rhino 3D modelers.</p>
+          <div class="export-btn-group">
+            <button id="btnDownloadAlignedDWG" class="btn-primary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Download Aligned .DWG
+            </button>
+            <button id="btnDownloadAlignedDXF" class="btn-secondary">Download .DXF</button>
+          </div>
+        </div>
+
+        <!-- Verification Plot Card -->
+        <div class="export-card">
+          <div class="export-card-badge tag-green">QA Report</div>
+          <div class="export-icon">📊</div>
+          <h3>Verification Image & Plot</h3>
+          <p>High-resolution multi-panel verification plot (.PNG) showing Level 1, Level 2, and the color-coded multi-level overlay comparison for engineering sign-off.</p>
+          <div class="export-btn-group">
+            <button id="btnDownloadPlotPNG" class="btn-primary">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Download Verification PNG
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Help & Rules Modal -->
+  <div id="helpModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Conversion Rules & Architecture</h3>
+        <button id="btnCloseModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <h4>Simplification Rules Applied:</h4>
+        <ol class="rules-list">
+          <li><strong>Shared Wall Single-Line Deduplication:</strong> When two zones share a wall, only one single line is drawn instead of two duplicate overlapping lines.</li>
+          <li><strong>Orthogonal Snapping (±5°):</strong> Any wall segment within ±5.0° (editable) of horizontal or vertical is snapped to strict 0° or 90°.</li>
+          <li><strong>Zero Open Ends:</strong> All walls intersect cleanly to form closed planar loops, preventing "open polyloop" errors in building energy models.</li>
+          <li><strong>Layer Separation:</strong> Each level is grouped into distinct AutoCAD layers (<code>LEVEL_1</code>, <code>LEVEL_1_POLYLOOPS</code>, <code>LEVEL_1_TEXT</code>).</li>
+          <li><strong>Sequential Overlay Snapping:</strong> The selected base level is converted first. Each following level snaps to the coordinate grid of the level converted immediately before it.</li>
+          <li><strong>Horizontal Spread Export:</strong> Levels can be exported horizontally spaced by 120% of maximum building width with floor labels.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+    <div class="loading-spinner"></div>
+    <div id="loadingMessage" class="loading-message">Processing CAD Geometry...</div>
+  </div>
+
+  <footer class="app-footer">
+    <p>O'Brien360 Engineering & Sustainability Tools Suite &bull; PDF to DWG Clean Geometry Tool</p>
+  </footer>
+
+  <script src="sample_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -26,6 +26,7 @@ wheels/
 
 # Scratch & temporary dev files
 scratch/
+PDF_to_DWG/output_cad/
 
 # OS generated files
 .DS_Store
