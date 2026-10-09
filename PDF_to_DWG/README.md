@@ -36,7 +36,7 @@ An automated computational geometry converter and web application for **O'Brien3
 
 ## Hosted Web App
 
-Open the [PDF to DWG Converter](https://obrien360.github.io/bp-toolkit/PDF_to_DWG/) for browser-based use. The hosted version requires no Python installation; the local Python server remains available for server-backed PDF analysis and export.
+Open the [PDF to DWG Converter](https://obrien360.github.io/bp-toolkit/PDF_to_DWG/) for browser-based use. It parses PDFs in the browser with PDF.js, so no Python installation is needed and uploaded files are not sent to a server. An internet connection is required to load the PDF.js library. The local Python server remains available for server-backed analysis and production exports.
 
 ## Quick Start (3 Ways)
 

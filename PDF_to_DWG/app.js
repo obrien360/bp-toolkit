@@ -154,7 +154,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 async function checkServerConnection() {
-  if (window.location.protocol === 'file:') {
+  if (window.location.protocol === 'file:' ||
+      !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
     state.serverAvailable = false;
     updateConnectionBadge(false);
     return;
@@ -339,22 +340,25 @@ async function loadExampleFile() {
         return;
       }
     } catch (e) {
-      console.warn('Server fetch failed, falling back to preloaded data:', e);
+      console.warn('Server fetch failed, falling back to browser PDF parsing:', e);
       state.serverAvailable = false;
       updateConnectionBadge(false);
     }
   }
 
-  // Standalone fallback using preloaded data
-  if (window.PRELOADED_ZONING_DATA) {
-    populateInspectionData(window.PRELOADED_ZONING_DATA);
+  try {
+    const response = await fetch(new URL('Zoning.pdf', window.location.href));
+    if (!response.ok) throw new Error(`Could not load Zoning.pdf (${response.status})`);
+    const parsedData = await parsePdfInBrowser('Zoning.pdf', await response.arrayBuffer());
+    populateInspectionData(parsedData);
     hideLoading();
     runConversion();
     return;
+  } catch (error) {
+    hideLoading();
+    console.error('Example PDF load failed:', error);
+    alert(`Could not load the example PDF: ${error.message}`);
   }
-
-  hideLoading();
-  alert('Could not load example. Please run run_tool.bat to start the server.');
 }
 
 // --- Handle User PDF Upload ---
@@ -414,7 +418,7 @@ function processFile(file) {
 
     // Client-side PDF Parser fallback
     try {
-      const parsedData = parsePdfInBrowser(file.name, arrayBuffer);
+      const parsedData = await parsePdfInBrowser(file.name, arrayBuffer);
       populateInspectionData(parsedData);
       hideLoading();
       runConversion();
@@ -429,7 +433,28 @@ function processFile(file) {
 }
 
 // --- Client-Side PDF Parser (Zero Server Requirement) ---
-function parsePdfInBrowser(filename, arrayBuffer) {
+let pdfJsPromise;
+
+function loadPdfJs() {
+  if (!pdfJsPromise) {
+    pdfJsPromise = import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.4.299/pdf.min.mjs')
+      .then(pdfjs => {
+        pdfjs.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.4.299/pdf.worker.min.mjs';
+        return pdfjs;
+      });
+  }
+  return pdfJsPromise;
+}
+
+async function parsePdfInBrowser(filename, arrayBuffer) {
+  const pdfjs = await loadPdfJs();
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(arrayBuffer.slice(0)) });
+  const pdf = await loadingTask.promise;
+  const page = await pdf.getPage(1);
+  const pageAnnotations = (await page.getAnnotations()).filter(annotation => annotation.subtype === 'Polygon');
+  const optionalContentConfig = await pdf.getOptionalContentConfig();
+
   const bytes = new Uint8Array(arrayBuffer);
   // Decode Latin1 for regex scanning
   let text = '';
@@ -459,6 +484,21 @@ function parsePdfInBrowser(filename, arrayBuffer) {
   // 2. Extract Polygon Annotations
   const annotRegex = /<<[^\r\n]*?\/Type\s*\/Annot.*?\/Subtype\s*\/Polygon.*?>>/gs;
   const matches = text.match(annotRegex) || [];
+  if (matches.length !== pageAnnotations.length) {
+    throw new Error(`PDF polygon parsing mismatch: found ${matches.length} annotations in the PDF data, but ${pageAnnotations.length} on the first page.`);
+  }
+  const annotationOCGRefs = Array.from(
+    text.matchAll(/\/OC\s+(\d+)\s+\d+\s+R/g),
+    match => match[1]
+  );
+  const orderedOCGRefsMatch = annotationOCGRefs.length === matches.length;
+  const ocgNames = new Map();
+  for (const reference of annotationOCGRefs) {
+    if (ocgNames.has(reference)) continue;
+    const group = optionalContentConfig.getGroup(`${reference}R`);
+    if (group?.name) ocgNames.set(reference, group.name);
+  }
+  await loadingTask.destroy();
 
   const pdfArray = (source, key) => {
     const match = source.match(new RegExp(`/${key}\\s*\\[([^\\]]+)\\]`));
@@ -468,13 +508,12 @@ function parsePdfInBrowser(filename, arrayBuffer) {
   };
 
   const annotationObjects = new Map();
-  const ocgNames = new Map();
   const objectRegex = /\b(\d+)\s+\d+\s+obj\b([\s\S]*?)\bendobj\b/g;
   for (const match of text.matchAll(objectRegex)) {
     const objectBody = match[2];
     if (/\/Type\s*\/OCG/.test(objectBody)) {
       const nameMatch = objectBody.match(/\/Name\s*\((.*?)\)/s);
-      if (nameMatch) ocgNames.set(match[1], nameMatch[1]);
+      if (nameMatch && !ocgNames.has(match[1])) ocgNames.set(match[1], nameMatch[1]);
     }
     if (!/\/Type\s*\/Annot/.test(objectBody) || !/\/Subtype\s*\/Polygon/.test(objectBody)) continue;
     const vertices = pdfArray(objectBody, 'Vertices');
@@ -538,33 +577,42 @@ function parsePdfInBrowser(filename, arrayBuffer) {
   const isLevelName = (name) => /\b(level|floor|basement|roof|ground|podium|penthouse)\b/i.test(name || '');
 
   matches.forEach((body, idx) => {
+    const annotation = pageAnnotations[idx];
     // Use any named OCG before the title, which may be an author name.
     const tMatch = body.match(/\/T\s*\((.*?)\)/);
-    const ocMatch = body.match(/\/OC\s+(\d+)\s+\d+\s+R/);
-    const ocName = ocMatch ? ocgNames.get(ocMatch[1]) : '';
-    const title = tMatch ? tMatch[1].trim() : '';
+    const bodyOCGRef = body.match(/\/OC\s+(\d+)\s+\d+\s+R/)?.[1];
+    const ocgRef = bodyOCGRef || (orderedOCGRefsMatch ? annotationOCGRefs[idx] : null);
+    const ocName = ocgRef ? ocgNames.get(ocgRef) : '';
+    const title = annotation.titleObj?.str?.trim() || (tMatch ? tMatch[1].trim() : '');
     const levelName = ocName && ocName.trim() ? ocName.trim() : isLevelName(title) ? title : 'Level 1';
 
     // Room Name & Area
     let roomName = `Zone ${idx + 1}`;
     let areaStr = '';
 
-    const hexContentMatch = body.match(/\/Contents\s*<feff([0-9a-fA-F]+)>/i);
-    if (hexContentMatch) {
-      const hex = hexContentMatch[1];
-      let decoded = '';
-      for (let k = 0; k < hex.length; k += 4) {
-        decoded += String.fromCharCode(parseInt(hex.substr(k, 4), 16));
-      }
-      const lines = decoded.split(/[\r\n]+/);
+    const annotationContents = annotation.contentsObj?.str;
+    if (annotationContents) {
+      const lines = annotationContents.split(/[\r\n]+/);
       roomName = lines[0].trim();
       if (lines.length > 1) areaStr = lines[1].trim();
     } else {
-      const strContentMatch = body.match(/\/Contents\s*\((.*?)\)/);
-      if (strContentMatch) {
-        const lines = strContentMatch[1].split(/[\r\n]+/);
+      const hexContentMatch = body.match(/\/Contents\s*<feff([0-9a-fA-F]+)>/i);
+      if (hexContentMatch) {
+        const hex = hexContentMatch[1];
+        let decoded = '';
+        for (let k = 0; k < hex.length; k += 4) {
+          decoded += String.fromCharCode(parseInt(hex.substr(k, 4), 16));
+        }
+        const lines = decoded.split(/[\r\n]+/);
         roomName = lines[0].trim();
         if (lines.length > 1) areaStr = lines[1].trim();
+      } else {
+        const strContentMatch = body.match(/\/Contents\s*\((.*?)\)/);
+        if (strContentMatch) {
+          const lines = strContentMatch[1].split(/[\r\n]+/);
+          roomName = lines[0].trim();
+          if (lines.length > 1) areaStr = lines[1].trim();
+        }
       }
     }
 
