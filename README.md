@@ -33,10 +33,23 @@ A collection of internal engineering, sustainability, and computational geometry
 
 ---
 
+### 3. [CBECC Space PolyLoop Checking Tool (`CBECC_Space_PolyLoop_Checking_Tool/`)](CBECC_Space_PolyLoop_Checking_Tool/)
+**Building Energy Model Geometry Healing Engine**
+- Detects spaces (`Spc`) missing `PolyLp` or having area mismatches (>5% deviation from child floors) in CBECC input files (`.cibd`, `.cibd10`, `.cibd19`, `.cibd22`, `.cibd25i`).
+- Combines child floor polyloops (`IntFlr`, `ExtFlr`, `UndgrFlr`) using robust Shapely planar polygon union.
+- **Sliver & Micro-gap Healing**: Automatic snap tolerance heals CAD boundaries and prevents detached multi-polygon errors.
+- **Interactive 2D CAD Viewport**: Visualizes individual child floor surfaces overlaid with the combined space polyloop boundary.
+- **Live In-Place Coordinate Editor**: Review and adjust $(X, Y, Z)$ coordinates, add/remove vertices, or reverse loop winding.
+- **Safe CBECC Injection**: Automatically allocates collision-free sequential `PolyLoop` and `CartesianPoint` IDs and cleanly injects them after the space object.
+- **One-Click Batch Repair & Export**: Repair all missing spaces in one click and download the fixed `.cibd` model file.
+
+---
+
 ## Quick Start for Team Members
 
-### Hosted PDF to DWG Converter
-- Open the [PDF to DWG Converter](https://obrien360.github.io/bp-toolkit/PDF_to_DWG/) in a browser; no local Python setup is required.
+### Hosted Web Tools on GitHub Pages (Zero Local Installation)
+- **PDF to DWG Converter**: [Launch Hosted PDF to DWG Converter](https://obrien360.github.io/bp-toolkit/PDF_to_DWG/)
+- **CBECC Space PolyLoop Checking Tool**: [Launch Hosted Space PolyLoop Checking Tool](https://obrien360.github.io/bp-toolkit/CBECC_Space_PolyLoop_Checking_Tool/)
 
 ### Prerequisites
 - [Python 3.8+](https://www.python.org/downloads/) (standard installation with "Add python.exe to PATH" checked).
@@ -49,6 +62,10 @@ A collection of internal engineering, sustainability, and computational geometry
 ### Launching Tool 2: Bluebeam PDF to DWG Converter
 - Navigate to `PDF_to_DWG/` and double-click **`run_tool.bat`**.
 - Browser opens at `http://localhost:8085`.
+
+### Launching Tool 3: CBECC Space PolyLoop Checking Tool
+- Navigate to `CBECC_Space_PolyLoop_Checking_Tool/` and double-click **`run_tool.bat`**.
+- Browser opens at `http://localhost:8090`.
 
 ---
 
@@ -63,5 +80,11 @@ python -m unittest test_app.py -v
 To test Tool 2:
 ```bash
 cd PDF_to_DWG
+python -m unittest test_app.py -v
+```
+
+To test Tool 3:
+```bash
+cd CBECC_Space_PolyLoop_Checking_Tool
 python -m unittest test_app.py -v
 ```

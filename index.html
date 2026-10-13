@@ -38,7 +38,7 @@
       z-index: 100;
     }
     .portal-container {
-      max-width: 960px;
+      max-width: 1160px;
       width: 100%;
       text-align: center;
     }
@@ -63,7 +63,7 @@
     }
     .tools-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       gap: 24px;
       text-align: left;
     }
@@ -88,6 +88,9 @@
     .tool-card.featured {
       border: 2px solid var(--ob-green);
     }
+    .tool-card.featured-teal {
+      border: 2px solid #2ea38d;
+    }
     .tool-badge {
       position: absolute;
       top: 18px;
@@ -101,6 +104,7 @@
     }
     .badge-green { background: #f2f8ea; color: #4b7811; }
     .badge-blue { background: #edf3fa; color: #3d6191; }
+    .badge-teal { background: #e6f7f4; color: #1f8570; }
     .tool-icon {
       font-size: 32px;
       margin-bottom: 16px;
@@ -165,6 +169,13 @@
     .btn-blue:hover {
       box-shadow: 0 6px 16px rgba(77, 118, 173, 0.45);
     }
+    .btn-teal {
+      background: linear-gradient(135deg, #2ea38d, #1f8570);
+      box-shadow: 0 4px 12px rgba(31, 133, 112, 0.35);
+    }
+    .btn-teal:hover {
+      box-shadow: 0 6px 16px rgba(31, 133, 112, 0.45);
+    }
     .portal-footer {
       margin-top: 40px;
       font-size: 12px;
@@ -201,8 +212,8 @@
       </div>
 
       <!-- Tool 2: Bluebeam PDF to DWG Converter -->
-      <div class="tool-card featured">
-        <span class="tool-badge badge-green">New &bull; CAD Engine</span>
+      <div class="tool-card">
+        <span class="tool-badge badge-green">CAD Engine</span>
         <div class="tool-icon">📐</div>
         <div>
           <h2 class="tool-title">PDF to Clean DWG Converter</h2>
@@ -218,6 +229,27 @@
         </div>
         <a href="PDF_to_DWG/" class="btn-launch btn-green">
           Launch PDF to DWG Converter &rarr;
+        </a>
+      </div>
+
+      <!-- Tool 3: CBECC Space PolyLoop Checking Tool -->
+      <div class="tool-card featured-teal">
+        <span class="tool-badge badge-teal">New &bull; Geometry Healing</span>
+        <div class="tool-icon">🔄</div>
+        <div>
+          <h2 class="tool-title">CBECC Space PolyLoop Checking Tool</h2>
+          <p class="tool-desc">Detects missing space PolyLoops and area mismatches (&gt;5% deviation from child floors) in CBECC input files (.cibd, .cibd10, .cibd19, .cibd22, .cibd25i), automatically generates clean boundary loops by unioning child floors, and heals model geometry.</p>
+          <ul class="tool-features">
+            <li>Automatic detection of spaces missing PolyLp or with area mismatch (&gt;5%)</li>
+            <li>Shapely union of child floors (IntFlr, ExtFlr, UndgrFlr)</li>
+            <li>Interactive 2D CAD canvas with zoom, pan, and existing vs union overlay</li>
+            <li>In-place coordinate editor (add, remove, adjust)</li>
+            <li>Safe unique entity ID allocation (PolyLoop & CartesianPoint)</li>
+            <li>One-click batch repair & direct .cibd export</li>
+          </ul>
+        </div>
+        <a href="CBECC_Space_PolyLoop_Checking_Tool/" class="btn-launch btn-teal">
+          Launch Space PolyLoop Checking Tool &rarr;
         </a>
       </div>
 

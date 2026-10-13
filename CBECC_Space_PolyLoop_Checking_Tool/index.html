@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CBECC Space PolyLoop Checking Tool | O'Brien360 Tools Suite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Raleway:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css?v=2">
+</head>
+<body>
+  <!-- Brand Stripe -->
+  <div class="brand-stripe"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand-group">
+        <a href="../index.html" class="portal-back-link" title="Return to OB360 Tools Portal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          Portal
+        </a>
+        <div class="brand-title-wrap">
+          <h1>CBECC Space PolyLoop Checking Tool</h1>
+          <span class="tool-tagline">Space PolyLoop Validation &amp; Geometry Repair Engine</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div id="connectionBadge" class="status-chip offline" title="Execution Environment: Standalone Browser or Connected Server">
+          <span class="status-dot"></span>
+          <span id="connectionBadgeText">Browser Mode</span>
+        </div>
+        <button id="btnAutoFixAll" class="btn btn-primary" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          Auto-Fix All Missing
+        </button>
+        <button id="btnDownloadFixed" class="btn btn-success" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download Repaired File
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-layout">
+    <!-- Top Bar: File Upload & Status KPI Cards -->
+    <section class="file-and-stats-bar">
+      <!-- File Selector Dropzone -->
+      <div class="file-dropzone" id="fileDropzone">
+        <div class="dropzone-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
+        </div>
+        <div class="dropzone-text">
+          <strong>Drop CBECC file here</strong> or <span class="browse-link">browse</span>
+          <span class="subtext">Supports .cibd, .cibd10, .cibd19, .cibd22, .cibd25i</span>
+        </div>
+        <input type="file" id="fileInput" accept=".cibd,.cibd10,.cibd16,.cibd19,.cibd22,.cibd25i" style="display: none;">
+      </div>
+
+      <!-- Quick Sample Loader -->
+      <div class="sample-loader-card">
+        <span class="card-label">Quick Sample File</span>
+        <div class="sample-actions">
+          <select id="sampleSelect" class="form-select">
+            <option value="" disabled selected>Loading samples...</option>
+          </select>
+          <button id="btnLoadSample" class="btn btn-secondary btn-sm">Load</button>
+        </div>
+      </div>
+
+      <!-- Stats KPIs -->
+      <div class="stats-row" id="statsRow">
+        <div class="stat-card">
+          <span class="stat-label">Active File</span>
+          <span class="stat-value text-ellipsis" id="statFileName">None</span>
+          <span class="stat-sub" id="statRuleset">-</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Total Spaces</span>
+          <span class="stat-value" id="statTotalSpaces">0</span>
+          <span class="stat-sub" id="statValidSpaces">0 intact</span>
+        </div>
+        <div class="stat-card alert-card">
+          <span class="stat-label">Missing PolyLoops</span>
+          <span class="stat-value text-alert" id="statMissingCount">0</span>
+          <span class="stat-sub text-alert" id="statFixedCount">0 fixed</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Max Entity IDs</span>
+          <span class="stat-value" id="statMaxIDs">#0 / #0</span>
+          <span class="stat-sub">PolyLp / CartesianPt</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Split Workspace -->
+    <div class="workspace-grid">
+      <!-- Left: Spaces Explorer -->
+      <aside class="sidebar-panel">
+        <div class="panel-header">
+          <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="missing" id="tabMissing">
+              Missing <span class="tab-badge alert" id="badgeMissingCount">0</span>
+            </button>
+            <button class="filter-tab" data-filter="fixed" id="tabFixed">
+              Fixed <span class="tab-badge success" id="badgeFixedCount">0</span>
+            </button>
+            <button class="filter-tab" data-filter="all" id="tabAll">
+              All <span class="tab-badge" id="badgeAllCount">0</span>
+            </button>
+          </div>
+          <div class="search-box">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" id="spaceSearch" placeholder="Search spaces or zones..." autocomplete="off">
+          </div>
+        </div>
+
+        <div class="spaces-list" id="spacesList">
+          <div class="empty-state">
+            <p>Load or upload a CBECC file to view spaces.</p>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right: Interactive CAD Inspector & Geometry Editor -->
+      <section class="inspector-panel" id="inspectorPanel">
+        <!-- Space Details Header -->
+        <div class="inspector-header">
+          <div class="space-title-info">
+            <div class="space-meta-badge" id="inspSpaceStatus">No Space Selected</div>
+            <h2 id="inspSpaceName">Select a Space</h2>
+            <div class="space-sub-meta">
+              <span id="inspThermalZone">Zone: -</span>
+              <span class="bullet">•</span>
+              <span id="inspStory">Story: -</span>
+              <span class="bullet">•</span>
+              <span id="inspElevation">Z: 0.0 ft</span>
+            </div>
+          </div>
+          <div class="inspector-quick-actions">
+            <button id="btnPrevSpace" class="btn btn-icon" title="Previous Space">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button id="btnNextSpace" class="btn btn-icon" title="Next Space">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+            <button id="btnApplyFixSingle" class="btn btn-primary" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Apply Fix to Space
+            </button>
+          </div>
+        </div>
+
+        <!-- Inspector Viewport Container -->
+        <div class="viewport-container">
+          <!-- Canvas CAD Viewport -->
+          <div class="canvas-wrapper" id="canvasWrapper">
+            <canvas id="cadCanvas"></canvas>
+            
+            <!-- Canvas Floating Controls Overlay -->
+            <div class="viewport-overlay-controls">
+              <button class="vp-btn" id="btnZoomIn" title="Zoom In">+</button>
+              <button class="vp-btn" id="btnZoomOut" title="Zoom Out">−</button>
+              <button class="vp-btn" id="btnFitView" title="Fit to View">Fit</button>
+              <button class="vp-btn" id="btnResetView" title="Reset View">1:1</button>
+            </div>
+
+            <!-- Legend Overlay -->
+            <div class="canvas-legend" id="canvasLegend">
+              <div class="legend-header">Layers & Geometry</div>
+              <div class="legend-items" id="legendItems">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <!-- Hover Vertex Tooltip -->
+            <div class="vertex-tooltip" id="vertexTooltip" style="display: none;"></div>
+          </div>
+
+          <!-- Bottom Geometry & Adjustment Drawer -->
+          <div class="tuning-drawer">
+            <!-- Toolbar: Tolerance sliders and actions -->
+            <div class="tuning-toolbar">
+              <div class="control-group">
+                <label for="sliderSimplify">Collinear Simplify: <span class="val-display" id="valSimplify">0.01 ft</span></label>
+                <input type="range" id="sliderSimplify" min="0" max="0.5" step="0.005" value="0.01">
+              </div>
+
+              <div class="control-group">
+                <label for="sliderSnap">Gap Healing: <span class="val-display" id="valSnap">0.05 ft</span></label>
+                <input type="range" id="sliderSnap" min="0" max="0.5" step="0.01" value="0.05">
+              </div>
+
+              <div class="control-group-buttons">
+                <button id="btnReverseWinding" class="btn btn-secondary btn-sm" title="Reverse vertex loop order">
+                  ⇄ Reverse Winding
+                </button>
+                <button id="btnRevertAuto" class="btn btn-secondary btn-sm" title="Reset to auto-calculated union">
+                  ↺ Reset Auto
+                </button>
+              </div>
+            </div>
+
+            <!-- Child Floor Inclusions Checklist -->
+            <div class="floors-checklist-bar" id="floorsChecklistBar">
+              <span class="checklist-title">Child Floors:</span>
+              <div class="floors-checkboxes" id="floorsCheckboxes">
+                <!-- Dynamically generated floor toggles -->
+              </div>
+            </div>
+
+            <!-- Metrics & Coordinate Table Drawer Toggle -->
+            <div class="coord-drawer-toggle">
+              <div class="geom-kpis">
+                <span class="kpi-pill"><strong>Vertices:</strong> <span id="kpiVertexCount">0</span></span>
+                <span class="kpi-pill"><strong>Union Area:</strong> <span id="kpiArea">0.00 sq ft</span></span>
+                <span class="kpi-pill kpi-mismatch" id="kpiExistingArea" style="display:none;"><strong>Existing PolyLp:</strong> <span id="kpiExistingAreaVal">—</span></span>
+                <span class="kpi-pill kpi-mismatch" id="kpiAreaDiff" style="display:none;"><strong>Diff:</strong> <span id="kpiAreaDiffVal">—</span></span>
+                <span class="kpi-pill" id="kpiMultiPartBadge" style="display: none;">Multi-Part Polygon</span>
+              </div>
+              <button id="btnToggleCoordTable" class="btn btn-ghost btn-sm">
+                <span id="coordTableToggleText">Show Coordinate Table</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
+
+            <!-- Collapsible Vertex Coordinate Table -->
+            <div class="coord-table-wrap" id="coordTableWrap" style="display: none;">
+              <div class="coord-table-header">
+                <span>PolyLoop Vertices (Ordered Sequence)</span>
+                <button id="btnAddVertex" class="btn btn-secondary btn-xs">+ Add Vertex</button>
+              </div>
+              <div class="table-scroll">
+                <table class="coord-table">
+                  <thead>
+                    <tr>
+                      <th width="40">#</th>
+                      <th>X Coordinate (ft)</th>
+                      <th>Y Coordinate (ft)</th>
+                      <th>Z Coordinate (ft)</th>
+                      <th width="60">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="coordTableBody">
+                    <!-- Populated live -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- Notification Toast -->
+  <div class="toast" id="toast" style="display: none;"></div>
+
+  <!-- Scripts -->
+  <script src="assets/martinez.min.js"></script>
+  <script src="app.js?v=2"></script>
+</body>
+</html>
