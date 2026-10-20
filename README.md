@@ -6,18 +6,7 @@ A collection of internal engineering, sustainability, and computational geometry
 
 ## Tools Directory
 
-### 1. [CBECC Result Tool (`CBECC_result_tool/`)](CBECC_result_tool/)
-**Energy Performance Rating Compliance Tool**
-- Extracts and aggregates CBECC / LEED EAp2-4/5 Performance Rating Method compliance data from simulation output HTML reports (`ap`, `ab1`, `ab2`, `ab3`, `ab4`).
-- Parses end-use breakdowns for Electricity and Natural Gas.
-- Supports dynamic baseline averaging (ab1–ab4).
-- Exports formatted reports matching the LEED standard template (CSV and multi-tab Excel).
-- Interactive Chart.js visual summary.
-- Runs with zero external Python dependencies.
-
----
-
-### 2. [Bluebeam PDF to DWG Converter (`PDF_to_DWG/`)](PDF_to_DWG/)
+### 1. [Bluebeam PDF to DWG Converter (`PDF_to_DWG/`)](PDF_to_DWG/)
 **Zoning Plan & Architectural Geometry Engine**
 - Converts Bluebeam polygon markup annotations on architectural PDFs into clean, orthogonal single-line DWG/DXF files with closed polyloops.
 - **Automatic Scale & Level Detection**: Reads `/Measure` dictionaries (e.g. `1/8" = 1'-0"` &rarr; `9.0 pt/ft`) and PDF layer OCGs (`Level 1`, `Level 2`, etc.).
@@ -33,7 +22,7 @@ A collection of internal engineering, sustainability, and computational geometry
 
 ---
 
-### 3. [CBECC Space PolyLoop Checking Tool (`CBECC_Space_PolyLoop_Checking_Tool/`)](CBECC_Space_PolyLoop_Checking_Tool/)
+### 2. [CBECC Space PolyLoop Checking Tool (`CBECC_Space_PolyLoop_Checking_Tool/`)](CBECC_Space_PolyLoop_Checking_Tool/)
 **Building Energy Model Geometry Healing Engine**
 - Detects spaces (`Spc`) missing `PolyLp` or having area mismatches (>5% deviation from child floors) in CBECC input files (`.cibd`, `.cibd10`, `.cibd19`, `.cibd22`, `.cibd25i`).
 - Combines child floor polyloops (`IntFlr`, `ExtFlr`, `UndgrFlr`) using robust Shapely planar polygon union.
@@ -45,27 +34,45 @@ A collection of internal engineering, sustainability, and computational geometry
 
 ---
 
+### 3. [CBECC Result Tool (`CBECC_result_tool/`)](CBECC_result_tool/)
+**Energy Performance Rating Compliance & Model QC Tool**
+- Extracts and aggregates CBECC / LEED EAp2-4/5 Performance Rating Method compliance data from simulation output HTML reports (`ap`, `ab1`, `ab2`, `ab3`, `ab4`).
+- Parses end-use breakdowns for Electricity and Natural Gas.
+- Supports dynamic baseline averaging (ab1–ab4).
+- Exports formatted reports matching the LEED standard template (CSV and multi-tab Excel).
+- Interactive Chart.js visual summary.
+- **Model QC Workspace (New)**:
+  - **Unmet Hours Verification**: Extracts occupied heating/cooling unmet hours from *Time Setpoint Not Met*, displays high-level Facility totals, flags zones $> 150$ hrs, with interactive filtering and sorting.
+  - **Workbook Discrepancy Checks**: Compares modeled energy and water metrics against the CBECC Model Workbook (`QC` sheet), flagging discrepancies exceeding $\pm 1\%$ (or $\pm 2\%$ for General Water Systems).
+  - **Schedule Verification**: Inspects lighting and receptacle schedule Equivalent Full Load Hours (EFLH).
+  - **Envelope Quality Control**: Aggregates unique opaque exterior, opaque interior (with reversed surfaces unified), and exterior fenestration constructions, cross-referencing against CBECC `.ibd-Detail` component definitions and decoded baseline factors.
+  - **Mechanical Ventilation QC**: Calculates Minimum Outdoor Air Occupied CFM and CFM/ft², cross-checking against CBECC `VentPerAreaSim` by zone and space type.
+  - Runs in both local Python server mode and zero-dependency client-side browser mode.
+
+---
+
 ## Quick Start for Team Members
 
 ### Hosted Web Tools on GitHub Pages (Zero Local Installation)
 - **PDF to DWG Converter**: [Launch Hosted PDF to DWG Converter](https://obrien360.github.io/bp-toolkit/PDF_to_DWG/)
 - **CBECC Space PolyLoop Checking Tool**: [Launch Hosted Space PolyLoop Checking Tool](https://obrien360.github.io/bp-toolkit/CBECC_Space_PolyLoop_Checking_Tool/)
+- **CBECC Result Tool**: [Launch Hosted CBECC Result Tool](https://obrien360.github.io/bp-toolkit/CBECC_result_tool/)
 
 ### Prerequisites
 - [Python 3.8+](https://www.python.org/downloads/) (standard installation with "Add python.exe to PATH" checked).
 - Core dependencies: `pip install pymupdf ezdxf shapely matplotlib`
 
-### Launching Tool 1: CBECC Result Tool
-- Navigate to `CBECC_result_tool/` and double-click **`run_tool.bat`**.
-- Browser opens at `http://localhost:8080`.
-
-### Launching Tool 2: Bluebeam PDF to DWG Converter
+### Launching Tool 1: Bluebeam PDF to DWG Converter
 - Navigate to `PDF_to_DWG/` and double-click **`run_tool.bat`**.
 - Browser opens at `http://localhost:8085`.
 
-### Launching Tool 3: CBECC Space PolyLoop Checking Tool
+### Launching Tool 2: CBECC Space PolyLoop Checking Tool
 - Navigate to `CBECC_Space_PolyLoop_Checking_Tool/` and double-click **`run_tool.bat`**.
 - Browser opens at `http://localhost:8090`.
+
+### Launching Tool 3: CBECC Result Tool
+- Navigate to `CBECC_result_tool/` and double-click **`run_tool.bat`**.
+- Browser opens at `http://localhost:8080`.
 
 ---
 
@@ -75,6 +82,7 @@ To test Tool 1:
 ```bash
 cd CBECC_result_tool
 python -m unittest test_app.py -v
+python -m unittest test_qc_engine.py -v
 ```
 
 To test Tool 2:

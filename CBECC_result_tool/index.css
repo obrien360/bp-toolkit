@@ -155,10 +155,31 @@ body {
   box-shadow: var(--card-shadow);
 }
 
+.portal-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all var(--transition-fast);
+}
+
+.portal-back-link:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-focus);
+  color: var(--ob360-blue);
+}
+
 .header-brand {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
 }
 
 .logo-wrapper {
@@ -1662,3 +1683,459 @@ body.dark-theme .csv-target-info code {
   justify-content: flex-start;
   margin-top: 4px;
 }
+
+/* ==========================================================================
+   Primary Top-Level Navigation Bar
+   ========================================================================== */
+.main-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  font-family: var(--font-primary);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.nav-tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+}
+
+.nav-tab-btn.active {
+  color: #fff;
+  background: var(--ob360-navy);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .nav-tab-btn.active {
+  background: var(--ob360-blue);
+  color: #fff;
+}
+
+.nav-badge-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: var(--ob360-green);
+  color: #1a2a14;
+  letter-spacing: 0.5px;
+}
+
+/* ==========================================================================
+   Model QC Workspace Styles
+   ========================================================================== */
+.qc-source-card {
+  margin-bottom: 20px;
+}
+
+.qc-ingestion-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 860px) {
+  .qc-ingestion-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.qc-drop-box {
+  min-height: 160px;
+  border: 2px dashed var(--border-color);
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.qc-drop-box:hover, .qc-drop-box.dragover {
+  border-color: var(--ob360-teal);
+  background: var(--bg-surface-hover);
+}
+
+.qc-sample-bar {
+  display: flex;
+  justify-content: center;
+  padding-top: 8px;
+}
+
+/* QC Top Toolbar & Summary Stat Strip */
+.qc-top-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px 20px;
+}
+
+.qc-scenario-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.active-scenario-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+}
+
+.badge-ap {
+  background: rgba(140, 189, 58, 0.2);
+  color: #3b5f0b;
+  border: 1px solid rgba(140, 189, 58, 0.4);
+}
+
+body:not(.light-theme) .badge-ap {
+  background: rgba(140, 189, 58, 0.25);
+  color: #a8db4d;
+}
+
+.badge-ab1 {
+  background: rgba(80, 114, 129, 0.2);
+  color: #2b4956;
+  border: 1px solid rgba(80, 114, 129, 0.4);
+}
+
+body:not(.light-theme) .badge-ab1 {
+  background: rgba(80, 114, 129, 0.25);
+  color: #8bb2c4;
+}
+
+.qc-summary-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.qc-stat-tile {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+}
+
+.qc-stat-tile .tile-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.qc-stat-tile .tile-val {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-top: 2px;
+  color: var(--text-primary);
+}
+
+.qc-stat-tile .tile-sub {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.qc-stat-tile.tile-warning {
+  border-color: #e67e22;
+  background: rgba(230, 126, 34, 0.08);
+}
+
+.qc-stat-tile.tile-warning .tile-val {
+  color: #d35400;
+}
+
+.qc-stat-tile.tile-ok {
+  border-color: var(--ob360-green);
+  background: rgba(140, 189, 58, 0.08);
+}
+
+.qc-stat-tile.tile-ok .tile-val {
+  color: #27ae60;
+}
+
+/* QC Alerts */
+.qc-alert {
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.qc-alert-warning {
+  background: rgba(230, 126, 34, 0.12);
+  border-left: 4px solid #e67e22;
+  color: var(--text-primary);
+}
+
+.qc-alert-success {
+  background: rgba(140, 189, 58, 0.12);
+  border-left: 4px solid var(--ob360-green);
+  color: var(--text-primary);
+}
+
+.qc-alert-info {
+  background: rgba(0, 122, 201, 0.08);
+  border-left: 4px solid var(--ob360-blue);
+  color: var(--text-primary);
+}
+
+/* Facility Header Badge */
+.qc-unmet-facility-badge {
+  font-size: 0.82rem;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+
+.qc-unmet-facility-badge.badge-warn {
+  border-color: #e67e22;
+  color: #d35400;
+  font-weight: 600;
+}
+
+.qc-unmet-facility-badge.badge-success {
+  border-color: var(--ob360-green);
+  color: #27ae60;
+}
+
+/* Filter Bar */
+.qc-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.control-sm .seg-btn {
+  padding: 5px 10px;
+  font-size: 0.78rem;
+}
+
+.select-dropdown-sm {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+/* QC Data Tables */
+.qc-table-wrapper {
+  max-height: 480px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.qc-table th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  z-index: 10;
+  font-size: 0.82rem;
+  box-shadow: 0 1px 0 var(--border-color);
+}
+
+.qc-table td {
+  font-size: 0.84rem;
+  padding: 8px 12px;
+}
+
+.qc-table tbody tr:hover {
+  background: var(--bg-surface-hover);
+}
+
+.row-warning {
+  background: rgba(230, 126, 34, 0.08) !important;
+}
+
+.row-warning-light {
+  background: rgba(230, 126, 34, 0.04) !important;
+}
+
+.badge-warn-sm {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(230, 126, 34, 0.2);
+  color: #c0392b;
+  margin-left: 6px;
+}
+
+.badge-success-sm {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(140, 189, 58, 0.2);
+  color: #27ae60;
+}
+
+.badge-neutral-sm {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+/* Schedules Drawer */
+.qc-schedules-drawer {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+
+.schedules-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.schedules-header h4 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text-heading);
+}
+
+.schedules-toggles {
+  display: flex;
+  gap: 8px;
+}
+
+.schedule-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+  animation: fadeIn 0.2s ease;
+}
+
+.schedule-panel h5 {
+  margin: 0 0 10px 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.qc-table-sm td, .qc-table-sm th {
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
+/* Callout Note */
+.qc-callout-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(98, 184, 164, 0.1);
+  border-left: 4px solid var(--ob360-teal);
+  border-radius: var(--radius-sm);
+  font-size: 0.84rem;
+  margin-bottom: 14px;
+  color: var(--text-primary);
+}
+
+.callout-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Sortable Headers */
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable-th:hover {
+  color: var(--ob360-teal);
+}
+
+.empty-state-card {
+  padding: 60px 20px;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  margin-top: 10px;
+}
+
+.empty-state-card .empty-icon {
+  font-size: 2.8rem;
+  margin-bottom: 12px;
+}
+
+.empty-state-card h3 {
+  margin-bottom: 8px;
+  color: var(--text-heading);
+}
+
+.empty-state-card p {
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin: 0 auto 20px auto;
+  font-size: 0.92rem;
+}
+

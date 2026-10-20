@@ -2744,6 +2744,36 @@ function setupEventListeners() {
     elements.csvBrowseFolderBtn.addEventListener('click', browseFolderForExport);
   }
   elements.downloadChartBtn.addEventListener('click', downloadChartImage);
+
+  // Top-Level Navigation Tabs (Compliance Results vs Model QC)
+  setupTopLevelNavigation();
+}
+
+function setupTopLevelNavigation() {
+  const navTabs = document.querySelectorAll('.nav-tab-btn');
+  const complianceView = document.getElementById('compliance-view');
+  const qcView = document.getElementById('qc-view');
+
+  navTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const targetView = tab.getAttribute('data-view');
+      navTabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      if (targetView === 'qc-view') {
+        if (complianceView) complianceView.classList.add('hidden');
+        if (qcView) {
+          qcView.classList.remove('hidden');
+          if (window.QCModule && typeof window.QCModule.render === 'function') {
+            window.QCModule.render();
+          }
+        }
+      } else {
+        if (qcView) qcView.classList.add('hidden');
+        if (complianceView) complianceView.classList.remove('hidden');
+      }
+    });
+  });
 }
 
 // =============================================================================
@@ -2751,6 +2781,9 @@ function setupEventListeners() {
 // =============================================================================
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
+  if (window.QCModule && typeof window.QCModule.init === 'function') {
+    window.QCModule.init();
+  }
   // Auto-load sample CSV on startup for instant live interactive dashboard
   await loadSampleCsv();
 });

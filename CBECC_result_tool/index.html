@@ -23,6 +23,10 @@
     <!-- Top Header with O'Brien360 Branding -->
     <header class="app-header">
       <div class="header-brand">
+        <a href="../index.html" class="portal-back-link" title="Return to OB360 Tools portal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          Portal
+        </a>
         <div class="logo-wrapper">
           <img src="assets/ob360_logo_bar.png" alt="O'Brien360" class="brand-logo" />
         </div>
@@ -44,8 +48,23 @@
       </div>
     </header>
 
-    <!-- Ingestion Section: 3 Ways to Load Results -->
-    <section class="card source-card">
+    <!-- Primary Top-Level Navigation Tabs -->
+    <nav class="main-nav-bar" id="main-nav-bar">
+      <button type="button" class="nav-tab-btn active" data-view="compliance-view" id="nav-btn-compliance">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        <span>Compliance Results</span>
+      </button>
+      <button type="button" class="nav-tab-btn" data-view="qc-view" id="nav-btn-qc">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+        <span>Model QC</span>
+        <span class="nav-badge-pill" id="qc-nav-badge">NEW</span>
+      </button>
+    </nav>
+
+    <!-- View 1: Compliance Results Container -->
+    <div id="compliance-view" class="view-container active">
+      <!-- Ingestion Section: 3 Ways to Load Results -->
+      <section class="card source-card">
       <div class="card-header">
         <div class="card-title-group">
           <span class="card-step-badge">1</span>
@@ -459,6 +478,70 @@
       </section>
 
     </main>
+    </div> <!-- /#compliance-view -->
+
+    <!-- View 2: Model QC Container -->
+    <div id="qc-view" class="view-container hidden">
+      <!-- QC Ingestion & File Selection Card -->
+      <section class="card source-card qc-source-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-step-badge">1</span>
+            <h2>Model QC: Select Model Run Folder &amp; Workbook</h2>
+          </div>
+          <div class="quick-tips">
+            <span>Compares <strong>ab1 (Baseline)</strong> &amp; <strong>ap (Proposed)</strong> vs <strong>QC Tab</strong></span>
+          </div>
+        </div>
+
+        <div class="qc-ingestion-grid">
+          <!-- Drop Box 1: Model Run Folder -->
+          <div class="source-box drop-box qc-drop-box" id="qc-drop-folder">
+            <input type="file" id="qc-folder-input" webkitdirectory directory multiple class="hidden-file-input" />
+            <div class="drop-content">
+              <div class="drop-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              </div>
+              <div class="drop-text">
+                <strong>Model Run Folder</strong>
+                <p>Contains <code>ab1/</code>, <code>ap/</code> folders &amp; <code>*.ibd-Detail</code> files</p>
+              </div>
+              <div class="drop-actions">
+                <button type="button" id="qc-browse-folder-btn" class="btn btn-primary btn-sm">Choose Folder</button>
+              </div>
+              <div id="qc-folder-status" class="source-status-info hidden"></div>
+            </div>
+          </div>
+
+          <!-- Drop Box 2: CBECC Model Workbook (.xlsm) -->
+          <div class="source-box drop-box qc-drop-box" id="qc-drop-wb">
+            <input type="file" id="qc-wb-input" accept=".xlsm,.xlsx" class="hidden-file-input" />
+            <div class="drop-content">
+              <div class="drop-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line></svg>
+              </div>
+              <div class="drop-text">
+                <strong>CBECC Model Workbook (.xlsm)</strong>
+                <p>Must contain the <code>QC</code> worksheet</p>
+              </div>
+              <div class="drop-actions">
+                <button type="button" id="qc-browse-wb-btn" class="btn btn-primary btn-sm">Choose Excel File</button>
+              </div>
+              <div id="qc-wb-status" class="source-status-info hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qc-sample-bar">
+          <button type="button" id="qc-load-sample-btn" class="btn btn-secondary">
+            ⚡ Load Example 2 Project &amp; Workbook (example_project_folder2)
+          </button>
+        </div>
+      </section>
+
+      <!-- Dynamic QC Workspace -->
+      <div id="qc-workspace" class="qc-workspace"></div>
+    </div> <!-- /#qc-view -->
 
     <!-- O'Brien360 Official Brand Footer -->
     <footer class="app-footer">
@@ -482,6 +565,7 @@
 
   </div>
 
+  <script src="qc_module.js?v=1.0"></script>
   <script src="app.js?v=2.2"></script>
 </body>
 </html>

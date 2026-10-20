@@ -10,6 +10,7 @@ import urllib.parse
 import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from parser_engine import scan_directory_for_htm_files, extract_compliance_data_from_html
+from qc_engine import scan_model_folder_for_qc, parse_excel_qc_sheet
 
 PORT = 8080
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,6 +27,17 @@ class EnergyToolRequestHandler(SimpleHTTPRequestHandler):
             self._send_json_response({
                 'path': default_path,
                 'exists': os.path.exists(default_path)
+            })
+            return
+
+        elif parsed_url.path == '/api/qc-default':
+            default_folder = os.path.join(BASE_DIR, 'example_project_folder2')
+            default_wb = os.path.join(BASE_DIR, 'CBECC Model Workbook - example2.xlsm')
+            self._send_json_response({
+                'folder': default_folder,
+                'folderExists': os.path.exists(default_folder),
+                'workbook': default_wb,
+                'workbookExists': os.path.exists(default_wb)
             })
             return
             
@@ -53,17 +65,40 @@ class EnergyToolRequestHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        elif parsed_url.path == '/api/qc-scan':
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            folder_path = query_params.get('folder', [''])[0]
+            if not folder_path:
+                folder_path = os.path.join(BASE_DIR, 'example_project_folder2')
+            folder_path = os.path.normpath(folder_path)
+            data = scan_model_folder_for_qc(folder_path)
+            self._send_json_response(data)
+            return
+
+        elif parsed_url.path == '/api/qc-workbook':
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            file_path = query_params.get('file', [''])[0]
+            if not file_path:
+                file_path = os.path.join(BASE_DIR, 'CBECC Model Workbook - example2.xlsm')
+            file_path = os.path.normpath(file_path)
+            data = parse_excel_qc_sheet(file_path)
+            self._send_json_response(data)
+            return
+
         # Serve static assets
         return super().do_GET()
 
     def do_POST(self):
         parsed_url = urllib.parse.urlparse(self.path)
-        
+        content_length = int(self.headers.get('Content-Length', 0))
+        body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
+        try:
+            payload = json.loads(body) if body else {}
+        except Exception:
+            payload = {}
+
         if parsed_url.path == '/api/scan':
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length).decode('utf-8')
             try:
-                payload = json.loads(body) if body else {}
                 folder_path = payload.get('folder', '').strip()
                 if not folder_path:
                     folder_path = os.path.join(BASE_DIR, 'example_project_folder')
@@ -88,6 +123,30 @@ class EnergyToolRequestHandler(SimpleHTTPRequestHandler):
                     'success': False,
                     'error': str(e)
                 }, status_code=500)
+            return
+
+        elif parsed_url.path == '/api/qc-scan':
+            try:
+                folder_path = payload.get('folder', '').strip()
+                if not folder_path:
+                    folder_path = os.path.join(BASE_DIR, 'example_project_folder2')
+                folder_path = os.path.normpath(folder_path)
+                data = scan_model_folder_for_qc(folder_path)
+                self._send_json_response(data)
+            except Exception as e:
+                self._send_json_response({'success': False, 'error': str(e)}, status_code=500)
+            return
+
+        elif parsed_url.path == '/api/qc-workbook':
+            try:
+                file_path = payload.get('file', '').strip()
+                if not file_path:
+                    file_path = os.path.join(BASE_DIR, 'CBECC Model Workbook - example2.xlsm')
+                file_path = os.path.normpath(file_path)
+                data = parse_excel_qc_sheet(file_path)
+                self._send_json_response(data)
+            except Exception as e:
+                self._send_json_response({'success': False, 'error': str(e)}, status_code=500)
             return
 
         self._send_json_response({'error': 'Not found'}, status_code=404)
