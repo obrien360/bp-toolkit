@@ -406,14 +406,35 @@ def parse_qc_from_htm(html_content: str, scenario: str, ibd_components: Dict[str
 
             # Match CBECC ThrmlZn
             cbecc_zn = thrml_zn_dict.get(raw_zname.lower())
+            if not cbecc_zn:
+                stripped = re.sub(r'^thermal zone:\s*', '', raw_zname.lower())
+                cbecc_zn = thrml_zn_dict.get(stripped) or thrml_zn_dict.get(f"thermal zone: {stripped}")
+            if not cbecc_zn:
+                norm_key = re.sub(r'[^a-z0-9]', '', raw_zname.lower())
+                for k, obj in thrml_zn_dict.items():
+                    if re.sub(r'[^a-z0-9]', '', k) == norm_key:
+                        cbecc_zn = obj
+                        break
+
             display_name = raw_zname
             cbecc_cfm_per_ft2 = 0.0
             cbecc_cfm_flow = 0.0
             if cbecc_zn:
-                display_name = cbecc_zn['name']
+                display_name = cbecc_zn.get('name', raw_zname)
                 props = cbecc_zn.get('props', {})
-                cbecc_cfm_per_ft2 = parse_float(props.get('VentPerAreaSim', 0.0))
-                cbecc_cfm_flow = parse_float(props.get('VentFlow', 0.0))
+                cbecc_cfm_per_ft2 = parse_float(
+                    props.get('VentPerAreaSim') or
+                    props.get('DsgnVentPerArea') or
+                    props.get('CodeDsgnVentPerArea') or
+                    props.get('VentPerAreaFlowSim') or
+                    0.0
+                )
+                cbecc_cfm_flow = parse_float(
+                    props.get('VentFlow') or
+                    props.get('VentFlowSim') or
+                    props.get('MinVentFlow') or
+                    0.0
+                )
 
             diff_pct = 0.0
             if cbecc_cfm_per_ft2 > 0:
@@ -514,14 +535,26 @@ def scan_model_folder_for_qc(folder_path: str) -> Dict[str, Any]:
     if not os.path.exists(folder_path):
         return {'success': False, 'error': f'Directory not found: {folder_path}'}
 
-    # Find .ibd-Detail files
-    ibd_ab1_pattern = os.path.join(folder_path, '*ab1.ibd-Detail')
-    ibd_ap_pattern  = os.path.join(folder_path, '*ap.ibd-Detail')
-    found_ab1_ibd = glob.glob(ibd_ab1_pattern)
-    found_ap_ibd  = glob.glob(ibd_ap_pattern)
+    # Smart .ibd-Detail file finder supporting specific scenario names, subfolders, and generic fallbacks
+    def find_ibd_for_scenario(scenario_key: str) -> Optional[str]:
+        cands = [f for f in glob.glob(os.path.join(folder_path, f'*{scenario_key}*.ibd-Detail*'))
+                 if not f.endswith('-B4Eval') and not f.endswith('-PostSim')]
+        if not cands:
+            cands = glob.glob(os.path.join(folder_path, f'*{scenario_key}*.ibd-Detail*'))
+        if cands:
+            return cands[0]
+        sub_cands = glob.glob(os.path.join(folder_path, scenario_key, '*.ibd-Detail*'))
+        if sub_cands:
+            return sub_cands[0]
+        generic = [f for f in glob.glob(os.path.join(folder_path, '*.ibd-Detail*'))
+                   if not f.endswith('-B4Eval') and not f.endswith('-PostSim') and 'RangeReqd' not in f]
+        if generic:
+            return generic[0]
+        generic_any = glob.glob(os.path.join(folder_path, '*.ibd-Detail*'))
+        return generic_any[0] if generic_any else None
 
-    ibd_ab1_path = found_ab1_ibd[0] if found_ab1_ibd else None
-    ibd_ap_path  = found_ap_ibd[0] if found_ap_ibd else None
+    ibd_ab1_path = find_ibd_for_scenario('ab1')
+    ibd_ap_path  = find_ibd_for_scenario('ap')
 
     components_ab1 = parse_ibd_detail_file(ibd_ab1_path) if ibd_ab1_path else {}
     components_ap  = parse_ibd_detail_file(ibd_ap_path) if ibd_ap_path else {}

@@ -62,12 +62,36 @@
     return '';
   }
 
+  // Helper to find ThrmlZn by name with robust prefix and normalization fallbacks
+  function findThrmlZn(thrmlZnDict, rawZName) {
+    if (!thrmlZnDict || !rawZName) return null;
+    const lName = rawZName.trim().toLowerCase();
+    if (thrmlZnDict[lName]) return thrmlZnDict[lName];
+
+    // Try stripping or adding "thermal zone: " prefix
+    const stripped = lName.replace(/^thermal zone:\s*/i, '').trim();
+    if (thrmlZnDict[stripped]) return thrmlZnDict[stripped];
+
+    const withPrefix = ('thermal zone: ' + stripped).trim();
+    if (thrmlZnDict[withPrefix]) return thrmlZnDict[withPrefix];
+
+    // Fallback: match by alphanumeric normalization
+    const normKey = lName.replace(/[^a-z0-9]/g, '');
+    for (const [k, obj] of Object.entries(thrmlZnDict)) {
+      if (k.replace(/[^a-z0-9]/g, '') === normKey) {
+        return obj;
+      }
+    }
+    return null;
+  }
+
   // Parse .ibd-Detail text in JavaScript
   function parseIbdDetailText(text) {
     const components = { ConsAssm: {}, FenCons: {}, ThrmlZn: {} };
     if (!text) return components;
 
-    const compRegex = /^([A-Za-z0-9_]+)\s+User:\s*"([^"]+)"\s*\n([\s\S]*?)(?=^\s*\.\.|\Z)/gm;
+    // Component block starts with CompType User: "Name" and terminates at .. line
+    const compRegex = /^([A-Za-z0-9_]+)\s+User:\s*"([^"]+)"\s*\r?\n([\s\S]*?)(?=^\s*\.\.)/gm;
     let match;
     while ((match = compRegex.exec(text)) !== null) {
       const cType = match[1];
@@ -77,7 +101,7 @@
       if (!components[cType]) components[cType] = {};
 
       const props = {};
-      const lines = body.split('\n');
+      const lines = body.split(/\r?\n/);
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line || line.startsWith(';')) continue;
@@ -85,13 +109,16 @@
         if (propMatch) {
           const pKey = propMatch[1];
           const rawVal = propMatch[2].trim();
+          let val = rawVal;
           const strM = rawVal.match(/^"([^"]*)"/);
           if (strM) {
-            props[pKey] = strM[1];
+            val = strM[1];
           } else {
             const numM = rawVal.match(/^([+-]?[0-9]+(?:\.[0-9]+)?)/);
-            props[pKey] = numM ? numM[1] : rawVal;
+            if (numM) val = numM[1];
           }
+          props[pKey] = val;
+          props[pKey.toLowerCase()] = val;
         }
       }
 
@@ -427,14 +454,24 @@
         const area = zoneAreas[rawZName.toLowerCase()] || 0.0;
         const cfmPerFt2 = area > 0 ? (cfm / area) : 0.0;
 
-        const cbeccZn = thrmlZnDict[rawZName.toLowerCase()];
+        const cbeccZn = findThrmlZn(thrmlZnDict, rawZName);
         let displayName = rawZName;
         let cbeccPerArea = 0.0;
         let cbeccFlow = 0.0;
-        if (cbeccZn) {
-          displayName = cbeccZn.name;
-          cbeccPerArea = safeFloat(cbeccZn.props.VentPerAreaSim);
-          cbeccFlow = safeFloat(cbeccZn.props.VentFlow);
+        if (cbeccZn && cbeccZn.props) {
+          displayName = cbeccZn.name || rawZName;
+          const p = cbeccZn.props;
+          cbeccPerArea = safeFloat(
+            p.ventperareasim !== undefined ? p.ventperareasim :
+            p.dsgnventperarea !== undefined ? p.dsgnventperarea :
+            p.codedsgnventperarea !== undefined ? p.codedsgnventperarea :
+            p.ventperareaflowsim !== undefined ? p.ventperareaflowsim : 0.0
+          );
+          cbeccFlow = safeFloat(
+            p.ventflow !== undefined ? p.ventflow :
+            p.ventflowsim !== undefined ? p.ventflowsim :
+            p.minventflow !== undefined ? p.minventflow : 0.0
+          );
         }
 
         let diffPct = 0.0;
@@ -1425,24 +1462,46 @@
     let htmApFile = null;
     let ibdAb1File = null;
     let ibdApFile = null;
+    let genericIbd = null;
+    let excelWbFile = null;
 
     for (let i = 0; i < fileList.length; i++) {
       const f = fileList[i];
       const p = (f.webkitRelativePath || f.name).toLowerCase();
       const n = f.name.toLowerCase();
 
-      if (p.includes('/ab1/') && (n.endsWith('.htm') || n.endsWith('.html'))) {
+      // HTM matching: check folder path or filename
+      if ((p.includes('/ab1/') || n.includes('ab1')) && (n.endsWith('.htm') || n.endsWith('.html')) && !n.includes('-zp') && !n.includes('-zb')) {
         htmAb1File = f;
-      } else if (p.includes('/ap/') && (n.endsWith('.htm') || n.endsWith('.html'))) {
+      } else if ((p.includes('/ap/') || n.includes('ap')) && (n.endsWith('.htm') || n.endsWith('.html')) && !n.includes('-zp') && !n.includes('-zb')) {
         htmApFile = f;
       }
 
-      if (n.endsWith('ab1.ibd-detail') || (n.includes('ab1') && n.endsWith('.ibd-detail'))) {
-        ibdAb1File = f;
-      } else if (n.endsWith('ap.ibd-detail') || (n.includes('ap') && n.endsWith('.ibd-detail'))) {
-        ibdApFile = f;
+      // .ibd-Detail matching
+      if (n.includes('.ibd-detail')) {
+        if (!genericIbd && !n.includes('-b4eval') && !n.includes('-postsim') && !n.includes('rangereqd')) {
+          genericIbd = f;
+        }
+        if (n.includes('ab1') || p.includes('/ab1/')) {
+          if (!ibdAb1File || (!n.includes('-b4eval') && !n.includes('-postsim'))) {
+            ibdAb1File = f;
+          }
+        }
+        if (n.includes('ap') || p.includes('/ap/')) {
+          if (!ibdApFile || (!n.includes('-b4eval') && !n.includes('-postsim'))) {
+            ibdApFile = f;
+          }
+        }
+      }
+
+      // Optional Excel workbook in same folder
+      if ((n.endsWith('.xlsm') || n.endsWith('.xlsx')) && (n.includes('workbook') || n.includes('qc') || n.includes('cbecc'))) {
+        excelWbFile = f;
       }
     }
+
+    if (!ibdAb1File && genericIbd) ibdAb1File = genericIbd;
+    if (!ibdApFile && genericIbd) ibdApFile = genericIbd;
 
     if (!htmAb1File && !htmApFile) {
       showToast('Missing HTM Files', 'No .htm files in ab1 or ap subfolders were found in the selected folder.', 'error');
@@ -1580,6 +1639,7 @@
   window.QCModule = {
     init: initQCModule,
     loadSampleData: loadSampleQCData,
+    handleBrowserFolderUpload: handleBrowserFolderUpload,
     render: renderQCWorkspace,
     state: state
   };

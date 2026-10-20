@@ -1156,6 +1156,11 @@ async function handleFileList(files) {
   if (parsedResults.length > 0) {
     state.isAppendedData = false;
     loadParsedScenarios(parsedResults);
+
+    // Forward selected model folder to Model QC tab
+    if (window.QCModule && typeof window.QCModule.handleBrowserFolderUpload === 'function') {
+      window.QCModule.handleBrowserFolderUpload(files);
+    }
     if (elements.folderStatusBadge) {
       elements.folderStatusBadge.className = 'source-status-info';
       elements.folderStatusBadge.innerHTML = `<span>✅ Extracted ${parsedResults.length} scenarios (${parsedResults.map(s => s.scenarioName).join(', ')}) from HTM files.</span>`;
@@ -1308,6 +1313,11 @@ async function handleAppendModelFolder(files) {
 
   if (parsedResults.length > 0) {
     state.method3NewScenarios = parsedResults;
+
+    // Forward selected model folder to Model QC tab
+    if (window.QCModule && typeof window.QCModule.handleBrowserFolderUpload === 'function') {
+      window.QCModule.handleBrowserFolderUpload(files);
+    }
     if (elements.appendDropFolder) elements.appendDropFolder.classList.add('has-file');
     if (elements.appendFolderStatus) {
       elements.appendFolderStatus.innerHTML = `<strong>${parsedResults.length} HTM Scenarios</strong> (${parsedResults.map(s => s.scenarioName).join(', ')})`;
