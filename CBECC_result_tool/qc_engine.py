@@ -12,8 +12,6 @@ import os
 import re
 import glob
 from typing import Dict, Any, List, Optional
-from bs4 import BeautifulSoup
-
 def parse_float(val: Any) -> float:
     if val is None:
         return 0.0

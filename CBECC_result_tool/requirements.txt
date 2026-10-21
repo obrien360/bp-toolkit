@@ -1,4 +1,3 @@
 # Optional dependencies for running local server and excel export
-beautifulsoup4>=4.12.0
 openpyxl>=3.1.0
 pandas>=2.0.0
