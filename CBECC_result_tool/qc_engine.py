@@ -99,6 +99,12 @@ def parse_ibd_detail_file(file_path: str) -> Dict[str, Dict[str, Any]]:
 
     return components
 
+def _strip_html_tags(text: str) -> str:
+    """Remove HTML tags and decode common entities from a string."""
+    text = re.sub(r'<[^>]+>', '', text)
+    text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').replace('&quot;', '"')
+    return text.strip()
+
 def find_table_by_fullname(html_content: str, fullname_marker: str) -> Optional[List[List[str]]]:
     idx = html_content.find(fullname_marker)
     if idx == -1:
@@ -110,11 +116,11 @@ def find_table_by_fullname(html_content: str, fullname_marker: str) -> Optional[
     if tbl_end == -1:
         return None
     tbl_html = html_content[tbl_start:tbl_end + 8]
-    soup = BeautifulSoup(tbl_html, 'html.parser')
     rows = []
-    for r in soup.find_all('tr'):
-        cells = [c.get_text(strip=True) for c in r.find_all(['td', 'th'])]
-        rows.append(cells)
+    for row_m in re.finditer(r'<tr[^>]*>(.*?)</tr>', tbl_html, re.IGNORECASE | re.DOTALL):
+        cells = [_strip_html_tags(c.group(1)) for c in re.finditer(r'<(?:td|th)[^>]*>(.*?)</(?:td|th)>', row_m.group(1), re.IGNORECASE | re.DOTALL)]
+        if cells:
+            rows.append(cells)
     return rows
 
 def parse_qc_from_htm(html_content: str, scenario: str, ibd_components: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
