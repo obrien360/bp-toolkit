@@ -4,7 +4,7 @@
  *   1. Time Setpoint Not Met (Unmet Hours)
  *   2. Energy & Water Comparisons vs CBECC Model Workbook (QC tab)
  *   3. Lighting & Receptacle Schedules Equivalent Full Load Hours
- *   4. Opaque Exterior, Opaque Interior, Exterior Fenestration vs .ibd-Detail ConsAssm/FenCons
+ *   4. Opaque and Fenestration constructions vs .ibd-Detail ConsAssm/FenCons
  *   5. Minimum Outdoor Air Mechanical Ventilation vs .ibd-Detail ThrmlZn
  */
 
@@ -18,7 +18,7 @@
     activeScenario: 'ap',   // 'ap' or 'ab1'
     unmetFilter: 'warn',    // 'warn' (> 150 hrs), 'zero' (> 0 hrs), 'all'
     unmetSort: 'orig',      // 'orig', 'heat_desc', 'cool_desc', 'name_asc'
-    envelopeSubtab: 'exterior', // 'exterior', 'interior', 'fenestration'
+    envelopeSubtab: 'opaque', // 'opaque', 'fenestration'
     ventSearch: '',
     ventSpaceType: 'all',
     ventSortCol: 'zoneName',
@@ -614,7 +614,7 @@
 
           <div class="qc-stat-tile ${energyWarningsCount > 0 ? 'tile-warning' : 'tile-ok'}">
             <span class="tile-label">Workbook Variance</span>
-            <span class="tile-val">${energyWarningsCount > 0 ? `${energyWarningsCount} Warning${energyWarningsCount > 1 ? 's' : ''}` : '✅ Matches (&le;1%)'}</span>
+            <span class="tile-val">${energyWarningsCount > 0 ? `${energyWarningsCount} Warning${energyWarningsCount > 1 ? 's' : ''}` : '✅ Matches configured thresholds'}</span>
             <span class="tile-sub">${state.workbookData ? 'QC tab loaded' : 'Workbook not loaded'}</span>
           </div>
 
@@ -800,14 +800,11 @@
             <h3>Envelope Constructions Quality Control</h3>
           </div>
           <div class="segmented-control control-sm" id="qc-envelope-subtabs">
-            <button type="button" class="seg-btn ${state.envelopeSubtab === 'exterior' ? 'active' : ''}" data-subtab="exterior">
-              Opaque Exterior (${scenarioData ? scenarioData.envelope.opaqueExterior.length : 0})
-            </button>
-            <button type="button" class="seg-btn ${state.envelopeSubtab === 'interior' ? 'active' : ''}" data-subtab="interior">
-              Opaque Interior (${scenarioData ? scenarioData.envelope.opaqueInterior.length : 0})
+            <button type="button" class="seg-btn ${state.envelopeSubtab === 'opaque' ? 'active' : ''}" data-subtab="opaque">
+              Opaque (${scenarioData ? scenarioData.envelope.opaqueExterior.length + scenarioData.envelope.opaqueInterior.length : 0})
             </button>
             <button type="button" class="seg-btn ${state.envelopeSubtab === 'fenestration' ? 'active' : ''}" data-subtab="fenestration">
-              Exterior Fenestration (${scenarioData ? scenarioData.envelope.exteriorFenestration.length : 0})
+              Fenestration (${scenarioData ? scenarioData.envelope.exteriorFenestration.length : 0})
             </button>
           </div>
         </div>
@@ -921,7 +918,9 @@
   function buildEnergyComparisons(scenarioData, workbookData, scenarioKey) {
     const checks = [
       {
-        category: 'Interior Lighting -- ComplianceLtg',
+        category: 'Interior Lighting',
+        sourceCategories: ['Interior Lighting -- ComplianceLtg'],
+        workbookCategories: ['Interior Lighting'],
         metric: 'Electricity Energy Use [kWh]',
         unit: 'kWh',
         source: 'compliance',
@@ -929,7 +928,13 @@
         threshold: 1.0
       },
       {
-        category: 'Interior Equipment -- Receptacle',
+        category: 'Receptacle Equipment',
+        sourceCategories: [
+          'Interior Equipment -- Receptacle',
+          'Interior Equipment -- Refrig',
+          'Interior Equipment -- Process'
+        ],
+        workbookCategories: ['Receptacle Equipment'],
         metric: 'Electricity Energy Use [kWh]',
         unit: 'kWh',
         source: 'compliance',
@@ -937,7 +942,9 @@
         threshold: 1.0
       },
       {
-        category: 'Interior Equipment -- Internal Transport',
+        category: 'Elevators & Escalators',
+        sourceCategories: ['Interior Equipment -- Internal Transport'],
+        workbookCategories: ['Elevators and Escalators', 'Elevators & Escalators'],
         metric: 'Electricity Energy Use [kWh]',
         unit: 'kWh',
         source: 'compliance',
@@ -945,7 +952,9 @@
         threshold: 1.0
       },
       {
-        category: 'Fans -- Parking Garage',
+        category: 'Fans - Parking Garage',
+        sourceCategories: ['Fans -- Parking Garage'],
+        workbookCategories: ['Fans-Parking Garage', 'Fans - Parking Garage'],
         metric: 'Electricity Energy Use [kWh]',
         unit: 'kWh',
         source: 'compliance',
@@ -953,20 +962,24 @@
         threshold: 1.0
       },
       {
-        category: 'Water Systems',
+        category: 'Service Water Heating',
+        sourceCategories: ['Water Systems'],
+        workbookCategories: ['Service Water Heating'],
         metric: 'Water [gal]',
         unit: 'gal',
         source: 'endUses',
         key: 'water',
-        threshold: 1.0
+        threshold: 4.0
       },
       {
-        category: 'Water Systems -- General',
+        category: 'Service Water Heating',
+        sourceCategories: ['Water Systems -- General'],
+        workbookCategories: ['Service Water Heating'],
         metric: 'Electricity [kWh] / Natural Gas [therm]',
         unit: 'dual',
         source: 'compliance',
         key: 'dual',
-        threshold: 2.0
+        threshold: 4.0
       }
     ];
 
@@ -979,24 +992,26 @@
       // Extract HTM value
       if (scenarioData) {
         if (c.source === 'compliance') {
-          const compItem = scenarioData.complianceEnergy[c.category];
-          if (compItem) {
+          c.sourceCategories.forEach(category => {
+            const compItem = scenarioData.complianceEnergy[category];
+            if (!compItem) return;
             presentInModel = true;
             if (c.key === 'elec') {
-              htmVal = compItem.electricity_kWh;
+              htmVal += compItem.electricity_kWh;
             } else if (c.key === 'dual') {
-              // Water Systems -- General: check elec and gas
-              if (compItem.electricity_kWh > 0) {
-                htmVal = compItem.electricity_kWh;
-                displayUnit = 'kWh';
-              } else if (compItem.naturalGas_therm > 0) {
-                htmVal = compItem.naturalGas_therm;
-                displayUnit = 'therm';
-              }
+              htmVal += compItem.electricity_kWh;
+              if (compItem.electricity_kWh <= 0) htmVal += compItem.naturalGas_therm;
             }
+          });
+          if (c.key === 'dual' && htmVal > 0) {
+            const hasElectricity = c.sourceCategories.some(category => {
+              const item = scenarioData.complianceEnergy[category];
+              return item && item.electricity_kWh > 0;
+            });
+            displayUnit = hasElectricity ? 'kWh' : 'therm';
           }
         } else if (c.source === 'endUses') {
-          const endItem = scenarioData.endUses[c.category];
+          const endItem = scenarioData.endUses[c.sourceCategories[0]];
           if (endItem) {
             presentInModel = true;
             htmVal = endItem.water_gal;
@@ -1006,7 +1021,9 @@
 
       // Extract Workbook value
       if (workbookData && workbookData.categories) {
-        const wbMatch = workbookData.categories.find(w => w.category.toLowerCase() === c.category.toLowerCase());
+        const wbMatch = workbookData.categories.find(w =>
+          c.workbookCategories.some(category => w.category.toLowerCase() === category.toLowerCase())
+        );
         if (wbMatch) {
           const targetObj = scenarioKey === 'ap' ? wbMatch.proposed : wbMatch.baseline;
           if (c.key === 'elec') {
@@ -1084,13 +1101,17 @@
       return '<p class="text-muted">No envelope data loaded.</p>';
     }
 
-    if (subtab === 'exterior') {
-      const items = scenarioData.envelope.opaqueExterior || [];
+    if (subtab === 'opaque') {
+      const items = [
+        ...(scenarioData.envelope.opaqueExterior || []).map(item => ({ ...item, surfaceType: 'Exterior' })),
+        ...(scenarioData.envelope.opaqueInterior || []).map(item => ({ ...item, surfaceType: 'Interior' }))
+      ];
       return `
         <div class="table-container qc-table-wrapper">
           <table class="data-table qc-table">
             <thead>
               <tr>
+                <th>Surface Type</th>
                 <th style="width: 35%;">Construction</th>
                 <th class="text-right">U-Factor with Film [Btu/h-ft2-F]</th>
                 <th class="text-right">U-Factor no Film [Btu/h-ft2-F]</th>
@@ -1101,41 +1122,14 @@
             <tbody>
               ${items.length > 0 ? items.map(c => `
                 <tr>
+                  <td>${c.surfaceType}</td>
                   <td><strong>${c.construction}</strong></td>
                   <td class="text-right font-mono">${fmtNum(c.uFactorWithFilm, 4)}</td>
                   <td class="text-right font-mono">${fmtNum(c.uFactorNoFilm, 4)}</td>
                   <td class="text-right font-mono">${fmtNum(c.netArea, 2)}</td>
                   <td><code>${c.referenceFactor || '-'}</code></td>
                 </tr>
-              `).join('') : '<tr><td colspan="5" class="text-muted">No opaque exterior constructions.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      `;
-    } else if (subtab === 'interior') {
-      const items = scenarioData.envelope.opaqueInterior || [];
-      return `
-        <div class="table-container qc-table-wrapper">
-          <table class="data-table qc-table">
-            <thead>
-              <tr>
-                <th style="width: 35%;">Construction (Reversed Merged)</th>
-                <th class="text-right">U-Factor with Film [Btu/h-ft2-F]</th>
-                <th class="text-right">U-Factor no Film [Btu/h-ft2-F]</th>
-                <th class="text-right">Net Area [ft2]</th>
-                <th>Reference Factor (${scenarioKey === 'ap' ? 'CBECC .ibd ConsAssm' : 'Baseline Decoded'})</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${items.length > 0 ? items.map(c => `
-                <tr>
-                  <td><strong>${c.construction}</strong></td>
-                  <td class="text-right font-mono">${fmtNum(c.uFactorWithFilm, 4)}</td>
-                  <td class="text-right font-mono">${fmtNum(c.uFactorNoFilm, 4)}</td>
-                  <td class="text-right font-mono">${fmtNum(c.netArea, 2)}</td>
-                  <td><code>${c.referenceFactor || '-'}</code></td>
-                </tr>
-              `).join('') : '<tr><td colspan="5" class="text-muted">No opaque interior constructions.</td></tr>'}
+              `).join('') : '<tr><td colspan="6" class="text-muted">No opaque constructions.</td></tr>'}
             </tbody>
           </table>
         </div>

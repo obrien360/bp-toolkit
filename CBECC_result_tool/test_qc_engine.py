@@ -57,10 +57,14 @@ class TestQCEngine(unittest.TestCase):
         wb_data = parse_excel_qc_sheet(self.example_wb)
         self.assertTrue(wb_data['success'])
         cats = wb_data['categories']
-        self.assertEqual(len(cats), 6)
         cat_names = [c['category'] for c in cats]
-        self.assertIn('Interior Lighting -- ComplianceLtg', cat_names)
-        self.assertIn('Water Systems -- General', cat_names)
+        self.assertEqual(cat_names, [
+            'Interior Lighting',
+            'Receptacle Equipment',
+            'Elevators & Escalators',
+            'Fans - Parking Garage',
+            'Service Water Heating'
+        ])
 
 if __name__ == '__main__':
     unittest.main()
