@@ -15,10 +15,11 @@
   const state = {
     folderData: null,       // { ab1: {...}, ap: {...}, hasAb1: bool, hasAp: bool, folderName: str }
     workbookData: null,     // { categories: [ { category, baseline, proposed } ] }
-    activeScenario: 'ap',   // 'ap' or 'ab1'
+    unmetScenario: 'ap',
+    ventScenario: 'ap',
     unmetFilter: 'warn',    // 'warn' (> 150 hrs), 'zero' (> 0 hrs), 'all'
     unmetSort: 'orig',      // 'orig', 'heat_desc', 'cool_desc', 'name_asc'
-    envelopeSubtab: 'opaque', // 'opaque', 'fenestration'
+    envelopeView: 'ap-opaque',
     ventSearch: '',
     ventSpaceType: 'all',
     ventSortCol: 'zoneName',
@@ -280,7 +281,7 @@
       if (consAssmDict[key]) {
         const props = consAssmDict[key].props || {};
         const factors = [];
-        if (props.UFactor && safeFloat(props.UFactor) > 0) factors.push(`U-Factor: ${safeFloat(props.UFactor).toFixed(4)}`);
+        if (props.UFactor && safeFloat(props.UFactor) > 0) factors.push(`U-Factor: ${safeFloat(props.UFactor).toFixed(3)}`);
         if (props.CFactor && safeFloat(props.CFactor) > 0) factors.push(`C-Factor: ${safeFloat(props.CFactor).toFixed(4)}`);
         if (props.FFactor && safeFloat(props.FFactor) > 0) factors.push(`F-Factor: ${safeFloat(props.FFactor).toFixed(4)}`);
         return factors.length > 0 ? factors.join(', ') : 'Found in CBECC';
@@ -414,7 +415,7 @@
       if (m) {
         item.construction = m.name;
         const p = m.props || {};
-        item.referenceUFactor = p.UFactor ? safeFloat(p.UFactor).toFixed(4) : '-';
+        item.referenceUFactor = p.UFactor ? safeFloat(p.UFactor).toFixed(3) : '-';
         item.referenceSHGC = p.SHGC ? safeFloat(p.SHGC).toFixed(4) : '-';
         item.referenceVT = p.VT ? safeFloat(p.VT).toFixed(4) : '-';
       }
@@ -578,56 +579,70 @@
       return;
     }
 
-    const scenarioKey = state.activeScenario; // 'ap' or 'ab1'
-    const scenarioLabel = scenarioKey === 'ap' ? 'Proposed (ap)' : 'Baseline (ab1)';
-    const scenarioData = state.folderData ? state.folderData[scenarioKey] : null;
-
-    // Check high level warnings
-    const unmetWarning = scenarioData && scenarioData.unmetHours && scenarioData.unmetHours.hasWarning;
-    const energyChecks = buildEnergyComparisons(scenarioData, state.workbookData, scenarioKey);
-    const energyWarningsCount = energyChecks.filter(c => c.isWarning).length;
+    const proposedData = state.folderData ? state.folderData.ap : null;
+    const baselineData = state.folderData ? state.folderData.ab1 : null;
+    const unmetData = state.folderData ? state.folderData[state.unmetScenario] : null;
+    const ventData = state.folderData ? state.folderData[state.ventScenario] : null;
+    const proposedChecks = buildEnergyComparisons(proposedData, state.workbookData, 'ap');
+    const baselineChecks = buildEnergyComparisons(baselineData, state.workbookData, 'ab1');
+    const energyWarningsCount = proposedChecks.filter(c => c.isWarning).length +
+      baselineChecks.filter(c => c.isWarning).length;
+    const energyComparisonsCount = [...proposedChecks, ...baselineChecks]
+      .filter(c => c.presentInModel || c.wbVal > 0).length;
+    const unmetWarnings = [
+      proposedData && proposedData.unmetHours.hasWarning ? 'Proposed' : null,
+      baselineData && baselineData.unmetHours.hasWarning ? 'Baseline' : null
+    ].filter(Boolean);
+    const ventilationOutsideRange = data => data
+      ? data.ventilation.filter(zone =>
+        Math.abs(zone.diffPercent) > 10 &&
+        (zone.mechanicalVentCFM > 0 || zone.ventPerAreaSimCBECC > 0)
+      ).length
+      : null;
+    const proposedSchedules = proposedData ? proposedData.schedules : { lighting: [], receptacle: [] };
+    const baselineSchedules = baselineData ? baselineData.schedules : { lighting: [], receptacle: [] };
+    const lightingSchedules = [
+      ...proposedSchedules.lighting.map(schedule => ({ ...schedule, scenario: 'Proposed' })),
+      ...baselineSchedules.lighting.map(schedule => ({ ...schedule, scenario: 'Baseline' }))
+    ];
+    const receptacleSchedules = [
+      ...proposedSchedules.receptacle.map(schedule => ({ ...schedule, scenario: 'Proposed' })),
+      ...baselineSchedules.receptacle.map(schedule => ({ ...schedule, scenario: 'Baseline' }))
+    ];
+    const [envelopeScenario, envelopeSubtab] = state.envelopeView.split('-');
+    const envelopeData = state.folderData ? state.folderData[envelopeScenario] : null;
 
     container.innerHTML = `
-      <!-- Scenario Selector & Quick Summary Stats -->
       <div class="qc-top-toolbar card">
-        <div class="qc-scenario-selector">
-          <span class="toolbar-label">Active Scenario:</span>
-          <div class="segmented-control" id="qc-scenario-toggle">
-            <button type="button" class="seg-btn ${state.activeScenario === 'ap' ? 'active' : ''}" data-scenario="ap">
-              Proposed (ap)
-            </button>
-            <button type="button" class="seg-btn ${state.activeScenario === 'ab1' ? 'active' : ''}" data-scenario="ab1">
-              Baseline (ab1)
-            </button>
-          </div>
-          <span class="active-scenario-badge ${state.activeScenario === 'ap' ? 'badge-ap' : 'badge-ab1'}">
-            Viewing ${scenarioLabel}
-          </span>
-        </div>
-
         <div class="qc-summary-strip">
-          <div class="qc-stat-tile ${unmetWarning ? 'tile-warning' : 'tile-ok'}">
-            <span class="tile-label">Unmet Hours</span>
-            <span class="tile-val">${unmetWarning ? '⚠️ Exceeds 150h' : '✅ Compliant'}</span>
-            <span class="tile-sub">Facility: H ${scenarioData ? fmtNum(scenarioData.unmetHours.facility.heating, 1) : '-'}h | C ${scenarioData ? fmtNum(scenarioData.unmetHours.facility.cooling, 1) : '-'}h</span>
+          <div class="qc-stat-tile ${!proposedData ? 'tile-neutral' : (proposedData.unmetHours.hasWarning ? 'tile-warning' : 'tile-ok')}">
+            <span class="tile-label">Proposed Unmet Hours</span>
+            <span class="tile-val">${proposedData ? (proposedData.unmetHours.hasWarning ? '⚠️ Exceeds 150h' : '✅ Compliant') : 'Not loaded'}</span>
+            <span class="tile-sub">Facility: H ${proposedData ? fmtNum(proposedData.unmetHours.facility.heating, 1) : '-'}h | C ${proposedData ? fmtNum(proposedData.unmetHours.facility.cooling, 1) : '-'}h</span>
+          </div>
+
+          <div class="qc-stat-tile ${!baselineData ? 'tile-neutral' : (baselineData.unmetHours.hasWarning ? 'tile-warning' : 'tile-ok')}">
+            <span class="tile-label">Baseline Unmet Hours</span>
+            <span class="tile-val">${baselineData ? (baselineData.unmetHours.hasWarning ? '⚠️ Exceeds 150h' : '✅ Compliant') : 'Not loaded'}</span>
+            <span class="tile-sub">Facility: H ${baselineData ? fmtNum(baselineData.unmetHours.facility.heating, 1) : '-'}h | C ${baselineData ? fmtNum(baselineData.unmetHours.facility.cooling, 1) : '-'}h</span>
           </div>
 
           <div class="qc-stat-tile ${energyWarningsCount > 0 ? 'tile-warning' : 'tile-ok'}">
             <span class="tile-label">Workbook Variance</span>
-            <span class="tile-val">${energyWarningsCount > 0 ? `${energyWarningsCount} Warning${energyWarningsCount > 1 ? 's' : ''}` : '✅ Matches configured thresholds'}</span>
-            <span class="tile-sub">${state.workbookData ? 'QC tab loaded' : 'Workbook not loaded'}</span>
+            <span class="tile-val">${!state.workbookData ? 'Workbook not loaded' : (energyWarningsCount > 0 ? `${energyWarningsCount} Warnings` : '✅ Within configured thresholds')}</span>
+            <span class="tile-sub">${state.workbookData ? `${energyComparisonsCount} comparisons checked` : 'QC tab not loaded'}</span>
           </div>
 
-          <div class="qc-stat-tile tile-neutral">
-            <span class="tile-label">Envelope Checks</span>
-            <span class="tile-val">${scenarioData ? (scenarioData.envelope.opaqueExterior.length + scenarioData.envelope.opaqueInterior.length + scenarioData.envelope.exteriorFenestration.length) : 0} Types</span>
-            <span class="tile-sub">Opaque &amp; Fenestration</span>
+          <div class="qc-stat-tile ${!proposedData ? 'tile-neutral' : (ventilationOutsideRange(proposedData) > 0 ? 'tile-warning' : 'tile-ok')}">
+            <span class="tile-label">Proposed Ventilation Outside Range</span>
+            <span class="tile-val">${proposedData ? `${ventilationOutsideRange(proposedData)} Zones` : 'Not loaded'}</span>
+            <span class="tile-sub">Difference &gt; &plusmn;10%</span>
           </div>
 
-          <div class="qc-stat-tile tile-neutral">
-            <span class="tile-label">Ventilation</span>
-            <span class="tile-val">${scenarioData ? scenarioData.ventilation.length : 0} Zones</span>
-            <span class="tile-sub">Min Outdoor Air (ACH)</span>
+          <div class="qc-stat-tile ${!baselineData ? 'tile-neutral' : (ventilationOutsideRange(baselineData) > 0 ? 'tile-warning' : 'tile-ok')}">
+            <span class="tile-label">Baseline Ventilation Outside Range</span>
+            <span class="tile-val">${baselineData ? `${ventilationOutsideRange(baselineData)} Zones` : 'Not loaded'}</span>
+            <span class="tile-sub">Difference &gt; &plusmn;10%</span>
           </div>
         </div>
       </div>
@@ -639,25 +654,39 @@
             <span class="card-step-badge">1</span>
             <h3>Time Setpoint Not Met (Unmet Hours)</h3>
           </div>
-          <div class="qc-unmet-facility-badge ${scenarioData && scenarioData.unmetHours.facility.exceeds150 ? 'badge-warn' : 'badge-success'}">
-            <strong>Facility Total:</strong>
-            Occupied Heating: <span>${scenarioData ? fmtNum(scenarioData.unmetHours.facility.heating, 1) : '-'} hr</span> &nbsp;|&nbsp;
-            Occupied Cooling: <span>${scenarioData ? fmtNum(scenarioData.unmetHours.facility.cooling, 1) : '-'} hr</span>
-          </div>
         </div>
 
         <div class="qc-card-body">
-          ${unmetWarning ? `
+          <div class="qc-unmet-facility-totals">
+            ${[
+              { label: 'Proposed', data: proposedData },
+              { label: 'Baseline', data: baselineData }
+            ].map(scenario => `
+              <div class="qc-unmet-facility-badge ${scenario.data ? (scenario.data.unmetHours.facility.exceeds150 ? 'badge-warn' : 'badge-success') : ''}">
+                <strong>${scenario.label} Facility Total:</strong>
+                Occupied Heating: <span>${scenario.data ? fmtNum(scenario.data.unmetHours.facility.heating, 1) : '-'} hr</span> &nbsp;|&nbsp;
+                Occupied Cooling: <span>${scenario.data ? fmtNum(scenario.data.unmetHours.facility.cooling, 1) : '-'} hr</span>
+              </div>
+            `).join('')}
+          </div>
+          ${unmetWarnings.length > 0 ? `
             <div class="qc-alert qc-alert-warning">
-              <strong>⚠️ Warning:</strong> One or more thermal zones exceed 150 hours of unmet setpoints during occupied hours. Review the flagged zones below.
+              <strong>⚠️ Warning:</strong> ${unmetWarnings.join(' and ')} ${unmetWarnings.length === 1 ? 'scenario has' : 'scenarios have'} thermal zones exceeding 150 occupied unmet hours. Select the scenario to review.
             </div>
           ` : `
             <div class="qc-alert qc-alert-success">
-              <strong>✅ All zones pass:</strong> No thermal zones exceed 150 unmet hours during occupied heating or cooling.
+              <strong>✅ No loaded scenario has zones exceeding 150 occupied unmet hours.</strong>
             </div>
           `}
 
           <div class="qc-filter-bar">
+            <div class="filter-group">
+              <span class="filter-label">Scenario:</span>
+              <div class="segmented-control control-sm" id="qc-unmet-scenario-toggle">
+                <button type="button" class="seg-btn ${state.unmetScenario === 'ap' ? 'active' : ''}" data-scenario="ap">Proposed</button>
+                <button type="button" class="seg-btn ${state.unmetScenario === 'ab1' ? 'active' : ''}" data-scenario="ab1">Baseline</button>
+              </div>
+            </div>
             <div class="filter-group">
               <span class="filter-label">Filter Zones:</span>
               <div class="segmented-control control-sm" id="qc-unmet-filter">
@@ -688,7 +717,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${renderUnmetTableRows(scenarioData)}
+                ${renderUnmetTableRows(unmetData)}
               </tbody>
             </table>
           </div>
@@ -702,7 +731,7 @@
             <span class="card-step-badge">2</span>
             <h3>Performance Rating &amp; Workbook QC Comparison</h3>
           </div>
-          <span class="table-subtitle">Comparing ${scenarioLabel} simulation against CBECC Model Workbook "QC" Tab</span>
+          <span class="table-subtitle">Proposed and baseline simulations compared with the CBECC Model Workbook "QC" Tab</span>
         </div>
 
         <div class="qc-card-body">
@@ -713,20 +742,25 @@
           ` : ''}
 
           <div class="table-container qc-table-wrapper">
-            <table class="data-table qc-table">
+            <table class="data-table qc-table qc-comparison-table">
               <thead>
                 <tr>
-                  <th>Compliance Category</th>
-                  <th>Metric / Resource</th>
-                  <th class="text-right">Simulation Result (HTM)</th>
-                  <th class="text-right">Workbook Value (QC Tab)</th>
-                  <th class="text-right">Difference</th>
+                  <th rowspan="2">Compliance Category</th>
+                  <th rowspan="2">Metric</th>
+                  <th colspan="3" class="text-center">Proposed</th>
+                  <th colspan="3" class="text-center">Baseline</th>
+                </tr>
+                <tr class="qc-comparison-subhead">
+                  <th class="text-right">Simulation</th>
+                  <th class="text-right">Workbook</th>
                   <th class="text-right">Difference %</th>
-                  <th class="text-center">QC Status</th>
+                  <th class="text-right">Simulation</th>
+                  <th class="text-right">Workbook</th>
+                  <th class="text-right">Difference %</th>
                 </tr>
               </thead>
               <tbody>
-                ${renderEnergyComparisonRows(energyChecks)}
+                ${renderEnergyComparisonRows(proposedChecks, baselineChecks)}
               </tbody>
             </table>
           </div>
@@ -737,10 +771,10 @@
               <h4>📅 Schedule Verification: Equivalent Full Load Hours (EFLH)</h4>
               <div class="schedules-toggles">
                 <button type="button" class="btn btn-sm btn-outline" id="toggle-light-sched-btn">
-                  💡 Toggle Lighting Schedules (${scenarioData ? scenarioData.schedules.lighting.length : 0})
+                  💡 Toggle Lighting Schedules (${lightingSchedules.length})
                 </button>
                 <button type="button" class="btn btn-sm btn-outline" id="toggle-recep-sched-btn">
-                  🔌 Toggle Receptacle Schedules (${scenarioData ? scenarioData.schedules.receptacle.length : 0})
+                  🔌 Toggle Receptacle Schedules (${receptacleSchedules.length})
                 </button>
               </div>
             </div>
@@ -751,17 +785,19 @@
                 <table class="data-table qc-table-sm">
                   <thead>
                     <tr>
+                      <th>Scenario</th>
                       <th>Schedule Name</th>
                       <th class="text-right">Equivalent Full Load Hours of Operation Per Year [hr]</th>
                     </tr>
                   </thead>
                   <tbody>
-                    ${(scenarioData && scenarioData.schedules.lighting.length > 0) ? scenarioData.schedules.lighting.map(s => `
+                    ${lightingSchedules.length > 0 ? lightingSchedules.map(s => `
                       <tr>
+                        <td>${s.scenario}</td>
                         <td><code>${s.scheduleName}</code></td>
                         <td class="text-right font-mono">${fmtNum(s.eflh, 1)} hr</td>
                       </tr>
-                    `).join('') : '<tr><td colspan="2" class="text-muted">No lighting schedules found.</td></tr>'}
+                    `).join('') : '<tr><td colspan="3" class="text-muted">No lighting schedules found.</td></tr>'}
                   </tbody>
                 </table>
               </div>
@@ -773,17 +809,19 @@
                 <table class="data-table qc-table-sm">
                   <thead>
                     <tr>
+                      <th>Scenario</th>
                       <th>Schedule Name</th>
                       <th class="text-right">Equivalent Full Load Hours of Operation Per Year [hr]</th>
                     </tr>
                   </thead>
                   <tbody>
-                    ${(scenarioData && scenarioData.schedules.receptacle.length > 0) ? scenarioData.schedules.receptacle.map(s => `
+                    ${receptacleSchedules.length > 0 ? receptacleSchedules.map(s => `
                       <tr>
+                        <td>${s.scenario}</td>
                         <td><code>${s.scheduleName}</code></td>
                         <td class="text-right font-mono">${fmtNum(s.eflh, 1)} hr</td>
                       </tr>
-                    `).join('') : '<tr><td colspan="2" class="text-muted">No receptacle schedules found.</td></tr>'}
+                    `).join('') : '<tr><td colspan="3" class="text-muted">No receptacle schedules found.</td></tr>'}
                   </tbody>
                 </table>
               </div>
@@ -799,18 +837,22 @@
             <span class="card-step-badge">3</span>
             <h3>Envelope Constructions Quality Control</h3>
           </div>
-          <div class="segmented-control control-sm" id="qc-envelope-subtabs">
-            <button type="button" class="seg-btn ${state.envelopeSubtab === 'opaque' ? 'active' : ''}" data-subtab="opaque">
-              Opaque (${scenarioData ? scenarioData.envelope.opaqueExterior.length + scenarioData.envelope.opaqueInterior.length : 0})
-            </button>
-            <button type="button" class="seg-btn ${state.envelopeSubtab === 'fenestration' ? 'active' : ''}" data-subtab="fenestration">
-              Fenestration (${scenarioData ? scenarioData.envelope.exteriorFenestration.length : 0})
-            </button>
+          <div class="segmented-control control-sm qc-envelope-selector" id="qc-envelope-subtabs">
+            ${[
+              { key: 'ap-opaque', label: 'Proposed Opaque', data: proposedData, tab: 'opaque' },
+              { key: 'ap-fenestration', label: 'Proposed Fenestration', data: proposedData, tab: 'fenestration' },
+              { key: 'ab1-opaque', label: 'Baseline Opaque', data: baselineData, tab: 'opaque' },
+              { key: 'ab1-fenestration', label: 'Baseline Fenestration', data: baselineData, tab: 'fenestration' }
+            ].map(view => `
+              <button type="button" class="seg-btn ${state.envelopeView === view.key ? 'active' : ''}" data-envelope-view="${view.key}">
+                ${view.label} (${view.data ? (view.tab === 'opaque' ? view.data.envelope.opaqueExterior.length + view.data.envelope.opaqueInterior.length : view.data.envelope.exteriorFenestration.length) : 0})
+              </button>
+            `).join('')}
           </div>
         </div>
 
         <div class="qc-card-body">
-          ${renderEnvelopeSubtab(scenarioData, state.envelopeSubtab, scenarioKey)}
+          ${renderEnvelopeSubtab(envelopeData, envelopeSubtab, envelopeScenario)}
         </div>
       </section>
 
@@ -821,7 +863,6 @@
             <span class="card-step-badge">4</span>
             <h3>Mechanical Ventilation Rate QC</h3>
           </div>
-          <span class="table-subtitle">Zone-by-zone outdoor air verification</span>
         </div>
 
         <div class="qc-card-body">
@@ -832,6 +873,13 @@
 
           <div class="qc-filter-bar">
             <div class="filter-group">
+              <span class="filter-label">Scenario:</span>
+              <div class="segmented-control control-sm" id="qc-vent-scenario-toggle">
+                <button type="button" class="seg-btn ${state.ventScenario === 'ap' ? 'active' : ''}" data-scenario="ap">Proposed</button>
+                <button type="button" class="seg-btn ${state.ventScenario === 'ab1' ? 'active' : ''}" data-scenario="ab1">Baseline</button>
+              </div>
+            </div>
+            <div class="filter-group">
               <label for="qc-vent-search" class="filter-label">Search Zone:</label>
               <input type="text" id="qc-vent-search" class="text-input-sm" placeholder="Search by name..." value="${state.ventSearch}">
             </div>
@@ -840,7 +888,7 @@
               <label for="qc-vent-spacetype" class="filter-label">Space Type:</label>
               <select id="qc-vent-spacetype" class="select-dropdown-sm">
                 <option value="all" ${state.ventSpaceType === 'all' ? 'selected' : ''}>All Space Types</option>
-                ${getUniqueSpaceTypes(scenarioData).map(st => `
+                ${getUniqueSpaceTypes(ventData).map(st => `
                   <option value="${st}" ${state.ventSpaceType === st ? 'selected' : ''}>${st}</option>
                 `).join('')}
               </select>
@@ -853,15 +901,15 @@
                 <tr>
                   <th class="sortable-th" data-col="zoneName">Zone Name <span class="sort-indicator"></span></th>
                   <th class="sortable-th" data-col="spaceType">Space Type <span class="sort-indicator"></span></th>
-                  <th class="text-right sortable-th" data-col="mechanicalVentCFM">Mechanical Vent [CFM] <span class="sort-indicator"></span></th>
-                  <th class="text-right sortable-th" data-col="areaSqFt">Area [ft2] <span class="sort-indicator"></span></th>
-                  <th class="text-right sortable-th" data-col="ventPerAreaSimCalculated">Calc. Vent [CFM/ft2] <span class="sort-indicator"></span></th>
-                  <th class="text-right sortable-th" data-col="ventPerAreaSimCBECC">CBECC File [CFM/ft2] <span class="sort-indicator"></span></th>
-                  <th class="text-right sortable-th" data-col="diffPercent">Difference % <span class="sort-indicator"></span></th>
+                  <th class="text-right sortable-th" data-col="mechanicalVentCFM">Mechanical Vent<br>[CFM] <span class="sort-indicator"></span></th>
+                  <th class="text-right sortable-th" data-col="areaSqFt">Area<br>[ft2] <span class="sort-indicator"></span></th>
+                  <th class="text-right sortable-th" data-col="ventPerAreaSimCalculated">Calc. Vent<br>[CFM/ft2] <span class="sort-indicator"></span></th>
+                  <th class="text-right sortable-th" data-col="ventPerAreaSimCBECC">CBECC File<br>[CFM/ft2] <span class="sort-indicator"></span></th>
+                  <th class="text-right sortable-th" data-col="diffPercent">Difference<br>[%] <span class="sort-indicator"></span></th>
                 </tr>
               </thead>
               <tbody>
-                ${renderVentilationRows(scenarioData)}
+                ${renderVentilationRows(ventData)}
               </tbody>
             </table>
           </div>
@@ -1055,7 +1103,7 @@
       return {
         category: c.category,
         metric: displayUnit === 'dual' ? c.metric : `${c.metric} (${displayUnit})`,
-        unit: displayUnit,
+        unit: displayUnit === 'dual' ? 'kWh' : displayUnit,
         htmVal: htmVal,
         wbVal: wbVal,
         diff: diff,
@@ -1067,30 +1115,33 @@
     });
   }
 
-  function renderEnergyComparisonRows(checks) {
-    if (!checks || checks.length === 0) {
-      return '<tr><td colspan="7" class="text-muted">No comparison data available.</td></tr>';
+  function renderEnergyComparisonRows(proposedChecks, baselineChecks) {
+    if ((!proposedChecks || proposedChecks.length === 0) && (!baselineChecks || baselineChecks.length === 0)) {
+      return '<tr><td colspan="8" class="text-muted">No comparison data available.</td></tr>';
     }
 
-    return checks.map(c => {
-      let statusBadge = '';
-      if (!c.presentInModel && c.wbVal === 0) {
-        statusBadge = '<span class="badge badge-neutral-sm">Not in Model</span>';
-      } else if (c.isWarning) {
-        statusBadge = `<span class="badge badge-warn-sm">⚠️ Diff &gt; ${c.threshold}%</span>`;
-      } else {
-        statusBadge = '<span class="badge badge-success-sm">✅ Pass (&le; ' + c.threshold + '%)</span>';
-      }
+    return proposedChecks.map((proposed, index) => {
+      const baseline = baselineChecks[index];
+      const proposedClass = !proposed.presentInModel && proposed.wbVal === 0
+        ? 'qc-diff-neutral'
+        : (proposed.isWarning ? 'qc-diff-warning' : 'qc-diff-pass');
+      const baselineClass = !baseline.presentInModel && baseline.wbVal === 0
+        ? 'qc-diff-neutral'
+        : (baseline.isWarning ? 'qc-diff-warning' : 'qc-diff-pass');
+      const metric = proposed.unit === baseline.unit
+        ? proposed.unit
+        : `${proposed.unit} / ${baseline.unit}`;
 
       return `
-        <tr class="${c.isWarning ? 'row-warning' : ''}">
-          <td><strong>${c.category}</strong></td>
-          <td><span class="text-muted">${c.metric}</span></td>
-          <td class="text-right font-mono">${fmtNum(c.htmVal, 2)}</td>
-          <td class="text-right font-mono">${fmtNum(c.wbVal, 2)}</td>
-          <td class="text-right font-mono ${c.diff > 0 ? 'text-danger' : ''}">${(c.diff > 0 ? '+' : '') + fmtNum(c.diff, 2)}</td>
-          <td class="text-right font-mono font-bold ${c.isWarning ? 'text-danger' : 'text-success'}">${fmtNum(c.diffPct, 2)}%</td>
-          <td class="text-center">${statusBadge}</td>
+        <tr>
+          <td><strong>${proposed.category}</strong></td>
+          <td><span class="text-muted">${metric}</span></td>
+          <td class="text-right font-mono">${fmtNum(proposed.htmVal, 0)}</td>
+          <td class="text-right font-mono">${fmtNum(proposed.wbVal, 0)}</td>
+          <td class="text-right font-mono font-bold ${proposedClass}">${fmtNum(proposed.diffPct, 1)}%</td>
+          <td class="text-right font-mono">${fmtNum(baseline.htmVal, 0)}</td>
+          <td class="text-right font-mono">${fmtNum(baseline.wbVal, 0)}</td>
+          <td class="text-right font-mono font-bold ${baselineClass}">${fmtNum(baseline.diffPct, 1)}%</td>
         </tr>
       `;
     }).join('');
@@ -1113,9 +1164,9 @@
               <tr>
                 <th>Surface Type</th>
                 <th style="width: 35%;">Construction</th>
-                <th class="text-right">U-Factor with Film [Btu/h-ft2-F]</th>
-                <th class="text-right">U-Factor no Film [Btu/h-ft2-F]</th>
-                <th class="text-right">Net Area [ft2]</th>
+                <th class="text-right">U-Factor with Film<br>[Btu/h-ft2-F]</th>
+                <th class="text-right">U-Factor no Film<br>[Btu/h-ft2-F]</th>
+                <th class="text-right">Net Area<br>[ft2]</th>
                 <th>Reference Factor (${scenarioKey === 'ap' ? 'CBECC .ibd ConsAssm' : 'Baseline Decoded'})</th>
               </tr>
             </thead>
@@ -1124,9 +1175,9 @@
                 <tr>
                   <td>${c.surfaceType}</td>
                   <td><strong>${c.construction}</strong></td>
-                  <td class="text-right font-mono">${fmtNum(c.uFactorWithFilm, 4)}</td>
-                  <td class="text-right font-mono">${fmtNum(c.uFactorNoFilm, 4)}</td>
-                  <td class="text-right font-mono">${fmtNum(c.netArea, 2)}</td>
+                  <td class="text-right font-mono">${fmtNum(c.uFactorWithFilm, 3)}</td>
+                  <td class="text-right font-mono">${fmtNum(c.uFactorNoFilm, 3)}</td>
+                  <td class="text-right font-mono">${fmtNum(c.netArea, 0)}</td>
                   <td><code>${c.referenceFactor || '-'}</code></td>
                 </tr>
               `).join('') : '<tr><td colspan="6" class="text-muted">No opaque constructions.</td></tr>'}
@@ -1142,10 +1193,10 @@
             <thead>
               <tr>
                 <th style="width: 25%;">Construction</th>
-                <th class="text-right">Glass U-Factor</th>
+                <th class="text-right">Glass U-Factor<br>[Btu/h-ft2-F]</th>
                 <th class="text-right">Glass SHGC</th>
                 <th class="text-right">Glass VT</th>
-                <th class="text-right">Sum of Area [ft2]</th>
+                <th class="text-right">Sum of Area<br>[ft2]</th>
                 <th>CBECC Reference (U / SHGC / VT)</th>
               </tr>
             </thead>
@@ -1153,10 +1204,10 @@
               ${items.length > 0 ? items.map(c => `
                 <tr>
                   <td><strong>${c.construction}</strong></td>
-                  <td class="text-right font-mono">${fmtNum(c.glassUFactor, 4)}</td>
+                  <td class="text-right font-mono">${fmtNum(c.glassUFactor, 3)}</td>
                   <td class="text-right font-mono">${fmtNum(c.glassSHGC, 4)}</td>
                   <td class="text-right font-mono">${fmtNum(c.glassVT, 4)}</td>
-                  <td class="text-right font-mono">${fmtNum(c.totalArea, 2)}</td>
+                  <td class="text-right font-mono">${fmtNum(c.totalArea, 0)}</td>
                   <td><code>U: ${c.referenceUFactor} | SHGC: ${c.referenceSHGC} | VT: ${c.referenceVT}</code></td>
                 </tr>
               `).join('') : '<tr><td colspan="6" class="text-muted">No exterior fenestration constructions.</td></tr>'}
@@ -1215,12 +1266,12 @@
         <tr class="${diffWarn ? 'row-warning-light' : ''}">
           <td><strong>${v.zoneName}</strong></td>
           <td><span class="badge badge-neutral-sm">${v.spaceType || '-'}</span></td>
-          <td class="text-right font-mono">${fmtNum(v.mechanicalVentCFM, 2)}</td>
-          <td class="text-right font-mono">${fmtNum(v.areaSqFt, 2)}</td>
+          <td class="text-right font-mono">${fmtNum(v.mechanicalVentCFM, 0)}</td>
+          <td class="text-right font-mono">${fmtNum(v.areaSqFt, 0)}</td>
           <td class="text-right font-mono font-bold">${fmtNum(v.ventPerAreaSimCalculated, 4)}</td>
           <td class="text-right font-mono">${fmtNum(v.ventPerAreaSimCBECC, 4)}</td>
           <td class="text-right font-mono ${diffWarn ? 'text-danger font-bold' : ''}">
-            ${v.diffPercent > 0 ? '+' : ''}${fmtNum(v.diffPercent, 2)}%
+            ${v.diffPercent > 0 ? '+' : ''}${fmtNum(v.diffPercent, 0)}%
           </td>
         </tr>
       `;
@@ -1228,19 +1279,28 @@
   }
 
   function bindQCEvents() {
-    // Scenario toggle
-    const scenToggle = document.getElementById('qc-scenario-toggle');
-    if (scenToggle) {
-      scenToggle.querySelectorAll('.seg-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          const sc = e.currentTarget.getAttribute('data-scenario');
-          if (sc && sc !== state.activeScenario) {
-            state.activeScenario = sc;
-            renderQCWorkspace();
-          }
+    const bindScenarioToggle = (id, onChange) => {
+      const toggle = document.getElementById(id);
+      if (!toggle) return;
+      toggle.querySelectorAll('.seg-btn').forEach(btn => {
+        btn.addEventListener('click', e => {
+          const scenario = e.currentTarget.getAttribute('data-scenario');
+          if (scenario === 'ap' || scenario === 'ab1') onChange(scenario);
         });
       });
-    }
+    };
+    bindScenarioToggle('qc-unmet-scenario-toggle', scenario => {
+      if (scenario !== state.unmetScenario) {
+        state.unmetScenario = scenario;
+        renderQCWorkspace();
+      }
+    });
+    bindScenarioToggle('qc-vent-scenario-toggle', scenario => {
+      if (scenario !== state.ventScenario) {
+        state.ventScenario = scenario;
+        renderQCWorkspace();
+      }
+    });
 
     // Unmet Filter
     const unmetFilterEl = document.getElementById('qc-unmet-filter');
@@ -1254,7 +1314,7 @@
             e.currentTarget.classList.add('active');
             const tbody = document.querySelector('#qc-unmet-table tbody');
             if (tbody && state.folderData) {
-              tbody.innerHTML = renderUnmetTableRows(state.folderData[state.activeScenario]);
+              tbody.innerHTML = renderUnmetTableRows(state.folderData[state.unmetScenario]);
             }
           }
         });
@@ -1268,7 +1328,7 @@
         state.unmetSort = e.target.value;
         const tbody = document.querySelector('#qc-unmet-table tbody');
         if (tbody && state.folderData) {
-          tbody.innerHTML = renderUnmetTableRows(state.folderData[state.activeScenario]);
+          tbody.innerHTML = renderUnmetTableRows(state.folderData[state.unmetScenario]);
         }
       });
     }
@@ -1295,9 +1355,10 @@
     if (envSubtabs) {
       envSubtabs.querySelectorAll('.seg-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
-          const sub = e.currentTarget.getAttribute('data-subtab');
-          if (sub) {
-            state.envelopeSubtab = sub;
+          const view = e.currentTarget.getAttribute('data-envelope-view');
+          if (view === 'ap-opaque' || view === 'ap-fenestration' ||
+              view === 'ab1-opaque' || view === 'ab1-fenestration') {
+            state.envelopeView = view;
             renderQCWorkspace();
           }
         });
@@ -1311,7 +1372,7 @@
         state.ventSearch = e.target.value;
         const tbody = document.querySelector('#qc-vent-table tbody');
         if (tbody && state.folderData) {
-          tbody.innerHTML = renderVentilationRows(state.folderData[state.activeScenario]);
+          tbody.innerHTML = renderVentilationRows(state.folderData[state.ventScenario]);
         }
       });
     }
@@ -1322,7 +1383,7 @@
         state.ventSpaceType = e.target.value;
         const tbody = document.querySelector('#qc-vent-table tbody');
         if (tbody && state.folderData) {
-          tbody.innerHTML = renderVentilationRows(state.folderData[state.activeScenario]);
+          tbody.innerHTML = renderVentilationRows(state.folderData[state.ventScenario]);
         }
       });
     }
@@ -1341,7 +1402,7 @@
           }
           const tbody = ventTable.querySelector('tbody');
           if (tbody && state.folderData) {
-            tbody.innerHTML = renderVentilationRows(state.folderData[state.activeScenario]);
+            tbody.innerHTML = renderVentilationRows(state.folderData[state.ventScenario]);
           }
         });
       });

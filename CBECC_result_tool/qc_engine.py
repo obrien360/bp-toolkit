@@ -225,7 +225,7 @@ def parse_qc_from_htm(html_content: str, scenario: str, ibd_components: Dict[str
             props = c_data.get('props', {})
             factors = []
             if 'UFactor' in props and parse_float(props['UFactor']) > 0:
-                factors.append(f"U-Factor: {round(parse_float(props['UFactor']), 4)}")
+                factors.append(f"U-Factor: {round(parse_float(props['UFactor']), 3)}")
             if 'CFactor' in props and parse_float(props['CFactor']) > 0:
                 factors.append(f"C-Factor: {round(parse_float(props['CFactor']), 4)}")
             if 'FFactor' in props and parse_float(props['FFactor']) > 0:
@@ -363,7 +363,7 @@ def parse_qc_from_htm(html_content: str, scenario: str, ibd_components: Dict[str
         if cbecc_match:
             item['construction'] = cbecc_match['name']
             p = cbecc_match.get('props', {})
-            item['referenceUFactor'] = str(round(parse_float(p.get('UFactor', 0)), 4)) if 'UFactor' in p else '-'
+            item['referenceUFactor'] = str(round(parse_float(p.get('UFactor', 0)), 3)) if 'UFactor' in p else '-'
             item['referenceSHGC'] = str(round(parse_float(p.get('SHGC', 0)), 4)) if 'SHGC' in p else '-'
             item['referenceVT'] = str(round(parse_float(p.get('VT', 0)), 4)) if 'VT' in p else '-'
         else:
