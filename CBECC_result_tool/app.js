@@ -2,6 +2,26 @@
  * app.js - Building Energy Performance Rating Compliance Extractor & Dashboard
  */
 
+// Global Shared Project State across Compliance, Model QC, and Reports tabs
+window.CBECC_SHARED = window.CBECC_SHARED || {
+  activeFolderPath: '',
+  activeFolderName: '',
+  sourceTab: '',
+  filesList: null,
+  setFolder: function(folderPath, folderName, sourceTab, files = null) {
+    this.activeFolderPath = folderPath || '';
+    this.activeFolderName = folderName || folderPath || '';
+    this.sourceTab = sourceTab || '';
+    if (files) this.filesList = files;
+    if (window.ReportsModule && typeof window.ReportsModule.onSharedFolderUpdated === 'function') {
+      window.ReportsModule.onSharedFolderUpdated(this.activeFolderPath, this.activeFolderName, this.sourceTab, this.filesList);
+    }
+    if (window.QCModule && typeof window.QCModule.onSharedFolderUpdated === 'function') {
+      window.QCModule.onSharedFolderUpdated(this.activeFolderPath, this.activeFolderName, this.sourceTab, this.filesList);
+    }
+  }
+};
+
 // =============================================================================
 // Constants & Unit Conversion Factors
 // =============================================================================
@@ -1157,7 +1177,10 @@ async function handleFileList(files) {
     state.isAppendedData = false;
     loadParsedScenarios(parsedResults);
 
-    // Forward selected model folder to Model QC tab
+    // Forward selected model folder to Model QC and Reports tabs
+    if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
+      window.CBECC_SHARED.setFolder('', state.selectedFolderName, 'Compliance Tab', files);
+    }
     if (window.QCModule && typeof window.QCModule.handleBrowserFolderUpload === 'function') {
       window.QCModule.handleBrowserFolderUpload(files);
     }
@@ -1218,6 +1241,9 @@ async function loadExampleDataInBrowser() {
         elements.folderStatusBadge.classList.remove('hidden');
       }
       updateExportSectionsVisibility();
+      if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
+        window.CBECC_SHARED.setFolder('example_project_folder', '1574_GLBH_S901G_CBECC2025', 'Compliance Tab');
+      }
       showToast('Demo Loaded', 'Loaded 5 example scenarios (ap, ab1–ab4)', '✅');
     }
   } catch (err) {
@@ -2763,6 +2789,7 @@ function setupTopLevelNavigation() {
   const navTabs = document.querySelectorAll('.nav-tab-btn');
   const complianceView = document.getElementById('compliance-view');
   const qcView = document.getElementById('qc-view');
+  const reportsView = document.getElementById('reports-view');
 
   navTabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -2770,16 +2797,25 @@ function setupTopLevelNavigation() {
       navTabs.forEach(t => t.classList.remove('active'));
       tab.classList.add('active');
 
+      if (complianceView) complianceView.classList.add('hidden');
+      if (qcView) qcView.classList.add('hidden');
+      if (reportsView) reportsView.classList.add('hidden');
+
       if (targetView === 'qc-view') {
-        if (complianceView) complianceView.classList.add('hidden');
         if (qcView) {
           qcView.classList.remove('hidden');
           if (window.QCModule && typeof window.QCModule.render === 'function') {
             window.QCModule.render();
           }
         }
+      } else if (targetView === 'reports-view') {
+        if (reportsView) {
+          reportsView.classList.remove('hidden');
+          if (window.ReportsModule && typeof window.ReportsModule.render === 'function') {
+            window.ReportsModule.render();
+          }
+        }
       } else {
-        if (qcView) qcView.classList.add('hidden');
         if (complianceView) complianceView.classList.remove('hidden');
       }
     });
@@ -2793,6 +2829,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   if (window.QCModule && typeof window.QCModule.init === 'function') {
     window.QCModule.init();
+  }
+  if (window.ReportsModule && typeof window.ReportsModule.init === 'function') {
+    window.ReportsModule.init();
   }
   // Auto-load sample CSV on startup for instant live interactive dashboard
   await loadSampleCsv();

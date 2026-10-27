@@ -1433,6 +1433,9 @@
       }
 
       if (resScan.success || resWb.success) {
+        if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
+          window.CBECC_SHARED.setFolder('example_project_folder2', 'example_project_folder2', 'Model QC Tab');
+        }
         showToast('QC Data Loaded', 'Sample models and workbook loaded successfully!', 'success');
         renderQCWorkspace();
         return;
@@ -1471,6 +1474,9 @@
       state.workbookData = parsedWb;
       updateWorkbookBadge('CBECC Model Workbook - example2.xlsm (Local Static)');
 
+      if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
+        window.CBECC_SHARED.setFolder('example_project_folder2', 'example_project_folder2', 'Model QC Tab');
+      }
       showToast('Sample QC Ready', 'Sample files parsed in browser mode!', 'success');
       renderQCWorkspace();
     } catch (staticErr) {
@@ -1596,6 +1602,9 @@
 
       const folderName = fileList[0].webkitRelativePath ? fileList[0].webkitRelativePath.split('/')[0] : 'Selected Files';
       updateFolderBadge(`Folder: ${folderName} (${dataAb1 ? 'ab1 ' : ''}${dataAp ? 'ap' : ''} loaded)`);
+      if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
+        window.CBECC_SHARED.setFolder('', folderName, 'Model QC Tab', fileList);
+      }
       showToast('Folder Loaded', 'Successfully extracted model run data!', 'success');
       renderQCWorkspace();
     } catch (err) {

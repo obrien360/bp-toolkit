@@ -59,6 +59,11 @@
         <span>Model QC</span>
         <span class="nav-badge-pill" id="qc-nav-badge">NEW</span>
       </button>
+      <button type="button" class="nav-tab-btn" data-view="reports-view" id="nav-btn-reports">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><line x1="10" y1="9" x2="8" y2="9"></line></svg>
+        <span>Reports</span>
+        <span class="nav-badge-pill" id="reports-nav-badge">NEW</span>
+      </button>
     </nav>
 
     <!-- View 1: Compliance Results Container -->
@@ -543,6 +548,11 @@
       <div id="qc-workspace" class="qc-workspace"></div>
     </div> <!-- /#qc-view -->
 
+    <!-- View 3: Reports Container (Envelope Area Tables 1 & 2) -->
+    <div id="reports-view" class="view-container hidden">
+      <div id="reports-workspace" class="reports-workspace"></div>
+    </div> <!-- /#reports-view -->
+
     <!-- O'Brien360 Official Brand Footer -->
     <footer class="app-footer">
       <div class="footer-stripe"></div>
@@ -566,6 +576,7 @@
   </div>
 
   <script src="qc_module.js?v=1.0"></script>
+  <script src="reports_module.js?v=1.0"></script>
   <script src="app.js?v=2.2"></script>
 </body>
 </html>

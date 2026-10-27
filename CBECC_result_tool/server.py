@@ -11,6 +11,7 @@ import webbrowser
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from parser_engine import scan_directory_for_htm_files, extract_compliance_data_from_html
 from qc_engine import scan_model_folder_for_qc, parse_excel_qc_sheet
+from reports_engine import scan_folder_for_leed_summary, parse_leed_summary_file
 
 PORT = 8080
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -85,6 +86,16 @@ class EnergyToolRequestHandler(SimpleHTTPRequestHandler):
             self._send_json_response(data)
             return
 
+        elif parsed_url.path == '/api/reports-scan':
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            folder_path = query_params.get('folder', [''])[0]
+            if not folder_path:
+                folder_path = os.path.join(BASE_DIR, 'example_project_folder2')
+            folder_path = os.path.normpath(folder_path)
+            data = scan_folder_for_leed_summary(folder_path)
+            self._send_json_response(data)
+            return
+
         # Serve static assets
         return super().do_GET()
 
@@ -144,6 +155,18 @@ class EnergyToolRequestHandler(SimpleHTTPRequestHandler):
                     file_path = os.path.join(BASE_DIR, 'CBECC Model Workbook - example2.xlsm')
                 file_path = os.path.normpath(file_path)
                 data = parse_excel_qc_sheet(file_path)
+                self._send_json_response(data)
+            except Exception as e:
+                self._send_json_response({'success': False, 'error': str(e)}, status_code=500)
+            return
+
+        elif parsed_url.path == '/api/reports-scan':
+            try:
+                folder_path = payload.get('folder', '').strip()
+                if not folder_path:
+                    folder_path = os.path.join(BASE_DIR, 'example_project_folder2')
+                folder_path = os.path.normpath(folder_path)
+                data = scan_folder_for_leed_summary(folder_path)
                 self._send_json_response(data)
             except Exception as e:
                 self._send_json_response({'success': False, 'error': str(e)}, status_code=500)
