@@ -1,5 +1,5 @@
 """
-cad_engine.py - Core Computational Geometry & CAD Conversion Engine for Bluebeam PDF to DWG
+cad_engine.py - Core Computational Geometry & CAD Conversion Engine for PDF to Clean CAD Tool
 Developed for O'Brien360 Tools Suite.
 
 Key Capabilities:

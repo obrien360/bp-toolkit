@@ -1,5 +1,5 @@
 """
-test_app.py - Automated Unit & Integration Tests for Bluebeam PDF to DWG Converter
+test_app.py - Automated Unit & Integration Tests for PDF to Clean CAD Tool
 Run with: python -m unittest test_app.py -v
 """
 

@@ -1,5 +1,5 @@
 """
-server.py - Lightweight REST API & Web Server for O'Brien360 Bluebeam PDF to DWG Tool
+server.py - Lightweight REST API & Web Server for O'Brien360 PDF to Clean CAD Tool
 Zero external server dependencies required (uses standard library http.server).
 """
 
@@ -356,7 +356,7 @@ def run_server():
 
     url = f"http://localhost:{PORT}"
     print("=" * 65)
-    print("  O'Brien360 Tools — Bluebeam PDF to DWG Converter")
+    print("  O'Brien360 Tools — PDF to Clean CAD Tool")
     print(f"  Web Interface running at: {url}")
     print("=" * 65)
     print("Press Ctrl+C to stop the server.")

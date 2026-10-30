@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>O'Brien360 Tools Suite</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@600;700;800&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@600;700;800&display=swap"
+    rel="stylesheet">
   <style>
     :root {
       --ob-green: #8CBD3A;
@@ -16,7 +19,13 @@
       --ob-bg: #F8FAFC;
       --ob-border: #E2E8F0;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--ob-bg);
@@ -28,6 +37,7 @@
       justify-content: center;
       padding: 32px 24px;
     }
+
     .brand-stripe {
       position: fixed;
       top: 0;
@@ -37,16 +47,19 @@
       background: linear-gradient(90deg, #8CBD3A 0%, #4D76AD 33%, #62B8A4 66%, #793E6D 100%);
       z-index: 100;
     }
+
     .portal-container {
       max-width: 1160px;
       width: 100%;
       text-align: center;
     }
+
     .portal-logo {
       max-width: 240px;
       height: auto;
       margin-bottom: 24px;
     }
+
     h1 {
       font-family: 'Raleway', sans-serif;
       font-size: 28px;
@@ -54,6 +67,7 @@
       color: var(--ob-dark);
       margin-bottom: 8px;
     }
+
     .portal-subtitle {
       color: #64748B;
       font-size: 15px;
@@ -61,12 +75,14 @@
       margin: 0 auto 36px;
       line-height: 1.6;
     }
+
     .tools-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       gap: 24px;
       text-align: left;
     }
+
     .tool-card {
       background: #FFFFFF;
       border: 1px solid var(--ob-border);
@@ -80,17 +96,21 @@
       position: relative;
       overflow: hidden;
     }
+
     .tool-card:hover {
       transform: translateY(-4px);
       box-shadow: 0 12px 30px -4px rgba(15, 23, 42, 0.12);
       border-color: #CBD5E1;
     }
+
     .tool-card.featured {
       border: 2px solid var(--ob-green);
     }
+
     .tool-card.featured-teal {
       border: 2px solid #2ea38d;
     }
+
     .tool-badge {
       position: absolute;
       top: 18px;
@@ -102,13 +122,27 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .badge-green { background: #f2f8ea; color: #4b7811; }
-    .badge-blue { background: #edf3fa; color: #3d6191; }
-    .badge-teal { background: #e6f7f4; color: #1f8570; }
+
+    .badge-green {
+      background: #f2f8ea;
+      color: #4b7811;
+    }
+
+    .badge-blue {
+      background: #edf3fa;
+      color: #3d6191;
+    }
+
+    .badge-teal {
+      background: #e6f7f4;
+      color: #1f8570;
+    }
+
     .tool-icon {
       font-size: 32px;
       margin-bottom: 16px;
     }
+
     .tool-title {
       font-family: 'Raleway', sans-serif;
       font-size: 20px;
@@ -116,6 +150,7 @@
       color: var(--ob-dark);
       margin-bottom: 8px;
     }
+
     .tool-desc {
       color: #64748B;
       font-size: 13.5px;
@@ -123,6 +158,7 @@
       margin-bottom: 24px;
       flex: 1;
     }
+
     .tool-features {
       list-style: none;
       margin-bottom: 28px;
@@ -132,16 +168,19 @@
       font-size: 12.5px;
       color: #475569;
     }
+
     .tool-features li {
       display: flex;
       align-items: center;
       gap: 8px;
     }
+
     .tool-features li::before {
       content: "✓";
       color: var(--ob-green);
       font-weight: 800;
     }
+
     .btn-launch {
       display: flex;
       align-items: center;
@@ -155,27 +194,34 @@
       text-decoration: none;
       transition: all 0.15s ease;
     }
+
     .btn-green {
       background: linear-gradient(135deg, var(--ob-green), #7aa82f);
       box-shadow: 0 4px 12px rgba(140, 189, 58, 0.35);
     }
+
     .btn-green:hover {
       box-shadow: 0 6px 16px rgba(140, 189, 58, 0.45);
     }
+
     .btn-blue {
       background: linear-gradient(135deg, var(--ob-blue), #3d6191);
       box-shadow: 0 4px 12px rgba(77, 118, 173, 0.35);
     }
+
     .btn-blue:hover {
       box-shadow: 0 6px 16px rgba(77, 118, 173, 0.45);
     }
+
     .btn-teal {
       background: linear-gradient(135deg, #2ea38d, #1f8570);
       box-shadow: 0 4px 12px rgba(31, 133, 112, 0.35);
     }
+
     .btn-teal:hover {
       box-shadow: 0 6px 16px rgba(31, 133, 112, 0.45);
     }
+
     .portal-footer {
       margin-top: 40px;
       font-size: 12px;
@@ -183,12 +229,15 @@
     }
   </style>
 </head>
+
 <body>
   <div class="brand-stripe"></div>
   <div class="portal-container">
-    <img src="CBECC_result_tool/assets/ob360_logo_bar.png" alt="O'Brien360" class="portal-logo" onerror="this.style.display='none'">
+    <img src="CBECC_PostSim_Tool/assets/ob360_logo_bar.png" alt="O'Brien360" class="portal-logo"
+      onerror="this.style.display='none'">
     <h1>O'Brien360 Engineering Tools</h1>
-    <p class="portal-subtitle">Internal engineering, sustainability, and computational geometry applications for building design & compliance.</p>
+    <p class="portal-subtitle">Internal engineering, sustainability, and computational geometry applications for
+      building design & compliance.</p>
 
     <div class="tools-grid">
 
@@ -197,8 +246,9 @@
         <span class="tool-badge badge-green">CAD Engine</span>
         <div class="tool-icon">📐</div>
         <div>
-          <h2 class="tool-title">PDF to Clean DWG Converter</h2>
-          <p class="tool-desc">Converts Bluebeam polygon markup annotations on PDFs into clean, orthogonal single-line DWG/DXF files with closed polyloops for Revit, ArchiCAD, and energy models.</p>
+          <h2 class="tool-title">PDF to Clean CAD Tool</h2>
+          <p class="tool-desc">Converts Bluebeam polygon markup annotations on PDFs into clean, orthogonal single-line
+            DWG/DXF files with closed polyloops for Revit, ArchiCAD, and energy models.</p>
           <ul class="tool-features">
             <li>Automatic scale & multi-level layer detection</li>
             <li>Single-line shared wall deduplication</li>
@@ -208,18 +258,20 @@
             <li>Spread-out export (120% spacing) & origin aligned</li>
           </ul>
         </div>
-        <a href="PDF_to_DWG/" class="btn-launch btn-green">
-          Launch PDF to DWG Converter &rarr;
+        <a href="PDF_to_CAD_Tool/" class="btn-launch btn-green">
+          Launch PDF to Clean CAD Tool &rarr;
         </a>
       </div>
 
       <!-- Tool 2: CBECC Space PolyLoop Checking Tool -->
-      <div class="tool-card featured-teal">
-        <span class="tool-badge badge-teal">New &bull; Geometry Healing</span>
+      <div class="tool-card">
+        <span class="tool-badge badge-teal">Geometry Healing</span>
         <div class="tool-icon">🔄</div>
         <div>
           <h2 class="tool-title">CBECC Space PolyLoop Checking Tool</h2>
-          <p class="tool-desc">Detects missing space PolyLoops and area mismatches (&gt;5% deviation from child floors) in CBECC input files (.cibd, .cibd10, .cibd19, .cibd22, .cibd25i), automatically generates clean boundary loops by unioning child floors, and heals model geometry.</p>
+          <p class="tool-desc">Detects missing space PolyLoops and area mismatches (&gt;5% deviation from child floors)
+            in CBECC input files (.cibd, .cibd10, .cibd19, .cibd22, .cibd25i), automatically generates clean boundary
+            loops by unioning child floors, and heals model geometry.</p>
           <ul class="tool-features">
             <li>Automatic detection of spaces missing PolyLp or with area mismatch (&gt;5%)</li>
             <li>Shapely union of child floors (IntFlr, ExtFlr, UndgrFlr)</li>
@@ -236,11 +288,12 @@
 
       <!-- Tool 3: CBECC Result Tool -->
       <div class="tool-card">
-        <span class="tool-badge badge-blue">Compliance</span>
+        <span class="tool-badge badge-blue">Post Simulation</span>
         <div class="tool-icon">⚡</div>
         <div>
-          <h2 class="tool-title">CBECC Result Tool</h2>
-          <p class="tool-desc">LEED EAp2-4/5 & CBECC performance rating method compliance aggregator. Parses simulation output HTML reports to produce standard 67-column LEED MDL CSVs, Model QC audits, and Excel summaries.</p>
+          <h2 class="tool-title">CBECC Post-Sim Tool</h2>
+          <p class="tool-desc">LEED EAp2-4/5 & CBECC performance rating method compliance aggregator. Parses simulation
+            output HTML reports to produce standard 67-column LEED MDL CSVs, Model QC audits, and Excel summaries.</p>
           <ul class="tool-features">
             <li>Electricity & Gas end-use breakdowns</li>
             <li>Dynamic baseline averaging (ab1–ab4)</li>
@@ -249,8 +302,8 @@
             <li>LEED standard template CSV / Excel export</li>
           </ul>
         </div>
-        <a href="CBECC_result_tool/" class="btn-launch btn-blue">
-          Launch CBECC Result Tool &rarr;
+        <a href="CBECC_PostSim_Tool/" class="btn-launch btn-blue">
+          Launch CBECC Post-Sim Tool &rarr;
         </a>
       </div>
 
@@ -261,4 +314,5 @@
     </div>
   </div>
 </body>
+
 </html>

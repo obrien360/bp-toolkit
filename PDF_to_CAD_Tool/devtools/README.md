@@ -2,7 +2,7 @@
 
 This folder contains standalone PDF inspection and geometry experiments retained for reference. None of these scripts is required by the web converter; the supported app and regression suite remain in the parent folder.
 
-Run scripts from the `PDF_to_DWG` directory so relative PDF and output paths resolve as expected:
+Run scripts from the `PDF_to_CAD_Tool` directory so relative PDF and output paths resolve as expected:
 
 ```powershell
 python devtools/check_fitz.py

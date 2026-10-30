@@ -1,5 +1,5 @@
 /**
- * app.js - Client application logic for O'Brien360 PDF to DWG Converter
+ * app.js - Client application logic for O'Brien360 PDF to Clean CAD Tool
  * High-performance 2D Canvas CAD engine with multi-level overlay,
  * interactive inspection, and instant DXF/DWG export.
  * Supports BOTH Connected Local Server mode and Standalone Browser mode!

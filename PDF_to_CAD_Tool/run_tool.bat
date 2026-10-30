@@ -1,10 +1,10 @@
 @echo off
-title O'Brien360 - CBECC Result Tool
+title O'Brien360 - PDF to Clean CAD Tool
 cd /d "%~dp0"
 
 echo ===================================================
-echo   O'Brien360 - CBECC Result Tool
-echo   CBECC Result Tool
+echo   O'Brien360 - PDF to Clean CAD Tool
+echo   Clean Architectural Geometry Engine
 echo ===================================================
 echo.
 
@@ -20,7 +20,7 @@ if %errorlevel% neq 0 (
 )
 
 :: Run the server
-echo Starting local server and opening web app...
+echo Starting local CAD tool server and opening web app...
 python server.py
 
 pause

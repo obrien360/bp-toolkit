@@ -1,10 +1,10 @@
 @echo off
-title O'Brien360 - Bluebeam PDF to DWG Converter
+title O'Brien360 - CBECC Post-Sim Tool
 cd /d "%~dp0"
 
 echo ===================================================
-echo   O'Brien360 - Bluebeam PDF to DWG Converter
-echo   Clean Architectural Geometry Engine
+echo   O'Brien360 - CBECC Post-Sim Tool
+echo   CBECC Post-Sim Tool
 echo ===================================================
 echo.
 
@@ -20,7 +20,7 @@ if %errorlevel% neq 0 (
 )
 
 :: Run the server
-echo Starting local CAD tool server and opening web app...
+echo Starting local server and opening web app...
 python server.py
 
 pause

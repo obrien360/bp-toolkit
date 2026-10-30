@@ -1,4 +1,4 @@
-# Bluebeam PDF to DWG Converter — Zoning Plan & Geometry Tool
+# PDF to Clean CAD Tool — Zoning Plan & Geometry Engine
 
 An automated computational geometry converter and web application for **O'Brien360** that converts Bluebeam polygon markup annotations on architectural PDFs into clean, orthogonal single-line DWG/DXF files with closed polyloops.
 
@@ -36,17 +36,17 @@ An automated computational geometry converter and web application for **O'Brien3
 
 ## Hosted Web App
 
-Open the [PDF to DWG Converter](https://obrien360.github.io/bp-toolkit/PDF_to_DWG/) for browser-based use. It parses PDFs in the browser with PDF.js, so no Python installation is needed and uploaded files are not sent to a server. An internet connection is required to load the PDF.js library. The local Python server remains available for server-backed analysis and production exports.
+Open the [PDF to Clean CAD Tool](https://obrien360.github.io/bp-toolkit/PDF_to_CAD_Tool/) for browser-based use. It parses PDFs in the browser with PDF.js, so no Python installation is needed and uploaded files are not sent to a server. An internet connection is required to load the PDF.js library. The local Python server remains available for server-backed analysis and production exports.
 
 ## Quick Start (3 Ways)
 
 ### Option 1: Double-Click Launcher (Windows — Recommended)
-1. Double-click **`run_tool.bat`** in this folder (`PDF_to_DWG/`).
+1. Double-click **`run_tool.bat`** in this folder (`PDF_to_CAD_Tool/`).
 2. Your default web browser will automatically open to `http://localhost:8085`.
 
 ### Option 2: Via Terminal
 ```bash
-cd c:\Local\AntiGravityProjects\OB360_tools\PDF_to_DWG
+cd c:\Local\AntiGravityProjects\OB360_tools\PDF_to_CAD_Tool
 python server.py
 ```
 Open your browser at `http://localhost:8085`.
@@ -68,7 +68,7 @@ generate_verification_plot(result, "output_cad/Zoning_Clean_Verification.png")
 
 To run the complete automated test suite (verifying all rules, geometric rectification, zero open ends, multi-level overlay, export formats, and REST API):
 ```bash
-cd c:\Local\AntiGravityProjects\OB360_tools\PDF_to_DWG
+cd c:\Local\AntiGravityProjects\OB360_tools\PDF_to_CAD_Tool
 python -m unittest test_app.py -v
 ```
 
@@ -77,7 +77,7 @@ python -m unittest test_app.py -v
 ## Project Structure
 
 ```
-PDF_to_DWG/
+PDF_to_CAD_Tool/
 ├── cad_engine.py             # Computational geometry, snapping, planar graph & DXF engine
 ├── server.py                 # REST API & static file web server (Python standard library)
 ├── index.html                # Modern O'Brien360 CAD web application interface
