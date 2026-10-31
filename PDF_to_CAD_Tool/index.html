@@ -1,15 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PDF to Clean CAD Tool | O'Brien360</title>
-  <meta name="description" content="Convert Bluebeam architectural zoning polygon markup annotations on PDF into clean, orthogonal single-line DWG/DXF files with closed polyloops.">
+  <meta name="description"
+    content="Convert Bluebeam architectural zoning polygon markup annotations on PDF into clean, orthogonal single-line DWG/DXF files with closed polyloops.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="index.css">
 </head>
+
 <body>
   <!-- Brand Stripe -->
   <div class="brand-stripe"></div>
@@ -19,7 +24,9 @@
     <div class="header-inner">
       <div class="header-left">
         <a href="../index.html" class="portal-back-link" title="Return to OB360 Tools portal">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
           Portal
         </a>
         <div class="brand-badge">
@@ -36,40 +43,23 @@
 
   <!-- Main Container -->
   <main class="app-container">
-    
-    <!-- Top Step Banner -->
-    <div class="workflow-stepper">
-      <div class="step-node active" id="stepNode1">
-        <span class="step-num">1</span>
-        <span class="step-label">Upload & Detect</span>
-      </div>
-      <div class="step-line" id="stepLine1"></div>
-      <div class="step-node" id="stepNode2">
-        <span class="step-num">2</span>
-        <span class="step-label">Scale & Rules</span>
-      </div>
-      <div class="step-line" id="stepLine2"></div>
-      <div class="step-node" id="stepNode3">
-        <span class="step-num">3</span>
-        <span class="step-label">Review & Overlay</span>
-      </div>
-      <div class="step-line" id="stepLine3"></div>
-      <div class="step-node" id="stepNode4">
-        <span class="step-num">4</span>
-        <span class="step-label">Export Clean DWG</span>
-      </div>
-    </div>
 
     <!-- Section 1: File Input & Quick Demo -->
     <section class="card section-card" id="sectionUpload">
       <div class="card-header">
         <div>
           <h2>1. Select or Drop Bluebeam Markup PDF</h2>
-          <p class="subtitle">Extracts polygon zoning annotations, page scale calibrations, and Optional Content Group levels.</p>
+          <p class="subtitle">Extracts polygon zoning annotations, page scale calibrations, and Optional Content Group
+            levels.</p>
         </div>
         <div class="header-actions">
           <button id="btnLoadExample" class="btn-secondary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
             Load Example (Zoning.pdf)
           </button>
         </div>
@@ -79,10 +69,15 @@
         <input type="file" id="fileInput" accept=".pdf" class="file-input-hidden">
         <div class="drop-content">
           <div class="drop-icon">
-            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8CBD3A" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8CBD3A" stroke-width="1.8">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
           </div>
           <h3>Drag and drop Bluebeam PDF here</h3>
-          <p class="drop-hint">or <button type="button" class="btn-browse" id="btnBrowse">browse files</button> from your computer</p>
+          <p class="drop-hint">or <button type="button" class="btn-browse" id="btnBrowse">browse files</button> from
+            your computer</p>
           <div class="drop-meta">Supports Bluebeam Revu exported PDFs with polygon area markup & layers</div>
         </div>
       </div>
@@ -91,7 +86,10 @@
       <div id="fileInfoCard" class="file-info-card" style="display: none;">
         <div class="file-meta-row">
           <div class="file-name-group">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4D76AD" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#4D76AD" stroke-width="2">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+              <polyline points="13 2 13 9 20 9"></polyline>
+            </svg>
             <span id="activeFileName" class="active-file-name">Zoning.pdf</span>
           </div>
           <div class="file-stats">
@@ -107,10 +105,13 @@
       <div class="card-header">
         <div>
           <h2>2. Conversion Configuration & Snapping Rules</h2>
-          <p class="subtitle">Review detected scale, set base level for multi-story overlay, and customize orthogonal snapping tolerances.</p>
+          <p class="subtitle">Review detected scale, set base level for multi-story overlay, and customize orthogonal
+            snapping tolerances.</p>
         </div>
         <button id="btnRunConversion" class="btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
           Generate Clean CAD Geometry
         </button>
       </div>
@@ -151,12 +152,14 @@
             <div class="form-group">
               <label for="selectBaseLevel">Base Reference Level</label>
               <select id="selectBaseLevel" class="form-select"></select>
-              <span class="field-hint">The reference level starts the conversion and does not snap to another level.</span>
+              <span class="field-hint">The reference level starts the conversion and does not snap to another
+                level.</span>
             </div>
             <div class="form-group">
               <label>Layer Snap Bases & Spread-Out Layout</label>
               <div id="levelOrderList" class="level-order-container"></div>
-              <span class="field-hint">Choose each layer's snap base. Use the arrows to set its left-to-right spread position.</span>
+              <span class="field-hint">Choose each layer's snap base. Use the arrows to set its left-to-right spread
+                position.</span>
             </div>
             <div class="form-group">
               <label>Resolved Conversion Sequence</label>
@@ -178,7 +181,8 @@
                 <span id="lblAngleTol" class="val-badge">± 5.0°</span>
               </div>
               <input type="range" id="rangeAngleTol" class="form-range" min="1.0" max="15.0" step="0.5" value="5.0">
-              <span class="field-hint">Lines within this angle of H/V are snapped to strict horizontal or vertical.</span>
+              <span class="field-hint">Lines within this angle of H/V are snapped to strict horizontal or
+                vertical.</span>
             </div>
 
             <div class="form-row">
@@ -192,7 +196,8 @@
               <div class="form-group">
                 <label for="inputOverlayTol">Overlay Snap Tol</label>
                 <div class="input-with-unit">
-                  <input type="number" id="inputOverlayTol" class="form-input" step="0.1" min="0.5" max="5.0" value="1.5">
+                  <input type="number" id="inputOverlayTol" class="form-input" step="0.1" min="0.5" max="5.0"
+                    value="1.5">
                   <span class="input-unit">ft</span>
                 </div>
               </div>
@@ -216,11 +221,16 @@
       <div class="card-header">
         <div>
           <h2>3. Interactive CAD Review & Multi-Level Inspection</h2>
-          <p class="subtitle">Inspect single-line wall networks, closed polyloops, shared wall deduplication, and multi-level overlay alignment.</p>
+          <p class="subtitle">Inspect single-line wall networks, closed polyloops, shared wall deduplication, and
+            multi-level overlay alignment.</p>
         </div>
         <div class="header-actions">
           <button id="btnExportDWGTop" class="btn-primary">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
             Export DWG / DXF
           </button>
         </div>
@@ -345,7 +355,8 @@
       <div class="card-header">
         <div>
           <h2>4. Export Clean DWG / DXF Files</h2>
-          <p class="subtitle">Download production-ready CAD files with proper AutoCAD layers, single-line walls, and closed polyloops.</p>
+          <p class="subtitle">Download production-ready CAD files with proper AutoCAD layers, single-line walls, and
+            closed polyloops.</p>
         </div>
       </div>
 
@@ -355,10 +366,15 @@
           <div class="export-card-badge">Rule 4 Standard</div>
           <div class="export-icon">📐</div>
           <h3>Spread-Out DWG / DXF</h3>
-          <p>All levels exported side-by-side horizontally at equal distance (120% of maximum width), with floor title labels. Perfect for 2D architectural review in AutoCAD or Rhino.</p>
+          <p>All levels exported side-by-side horizontally at equal distance (120% of maximum width), with floor title
+            labels. Perfect for 2D architectural review in AutoCAD or Rhino.</p>
           <div class="export-btn-group">
             <button id="btnDownloadSpreadDWG" class="btn-primary">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
               Download Spread .DWG
             </button>
             <button id="btnDownloadSpreadDXF" class="btn-secondary">Download .DXF</button>
@@ -370,10 +386,15 @@
           <div class="export-card-badge tag-blue">BIM / Simulation</div>
           <div class="export-icon">🏢</div>
           <h3>Aligned / Origin Stacked DWG</h3>
-          <p>All levels share identical coordinate origins (X=0, Y=0). Ideal for direct import into Revit, CBECC-Com, EnergyPlus, OpenStudio, or Rhino 3D modelers.</p>
+          <p>All levels share identical coordinate origins (X=0, Y=0). Ideal for direct import into Revit, CBECC-Com,
+            EnergyPlus, OpenStudio, or Rhino 3D modelers.</p>
           <div class="export-btn-group">
             <button id="btnDownloadAlignedDWG" class="btn-primary">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
               Download Aligned .DWG
             </button>
             <button id="btnDownloadAlignedDXF" class="btn-secondary">Download .DXF</button>
@@ -385,10 +406,15 @@
           <div class="export-card-badge tag-green">QA Report</div>
           <div class="export-icon">📊</div>
           <h3>Verification Image & Plot</h3>
-          <p>High-resolution multi-panel verification plot (.PNG) showing Level 1, Level 2, and the color-coded multi-level overlay comparison for engineering sign-off.</p>
+          <p>High-resolution multi-panel verification plot (.PNG) showing Level 1, Level 2, and the color-coded
+            multi-level overlay comparison for engineering sign-off.</p>
           <div class="export-btn-group">
             <button id="btnDownloadPlotPNG" class="btn-primary">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
               Download Verification PNG
             </button>
           </div>
@@ -408,12 +434,18 @@
       <div class="modal-body">
         <h4>Simplification Rules Applied:</h4>
         <ol class="rules-list">
-          <li><strong>Shared Wall Single-Line Deduplication:</strong> When two zones share a wall, only one single line is drawn instead of two duplicate overlapping lines.</li>
-          <li><strong>Orthogonal Snapping (±5°):</strong> Any wall segment within ±5.0° (editable) of horizontal or vertical is snapped to strict 0° or 90°.</li>
-          <li><strong>Zero Open Ends:</strong> All walls intersect cleanly to form closed planar loops, preventing "open polyloop" errors in building energy models.</li>
-          <li><strong>Layer Separation:</strong> Each level is grouped into distinct AutoCAD layers (<code>LEVEL_1</code>, <code>LEVEL_1_POLYLOOPS</code>, <code>LEVEL_1_TEXT</code>).</li>
-          <li><strong>Sequential Overlay Snapping:</strong> The selected base level is converted first. Each following level snaps to the coordinate grid of the level converted immediately before it.</li>
-          <li><strong>Horizontal Spread Export:</strong> Levels can be exported horizontally spaced by 120% of maximum building width with floor labels.</li>
+          <li><strong>Shared Wall Single-Line Deduplication:</strong> When two zones share a wall, only one single line
+            is drawn instead of two duplicate overlapping lines.</li>
+          <li><strong>Orthogonal Snapping (±5°):</strong> Any wall segment within ±5.0° (editable) of horizontal or
+            vertical is snapped to strict 0° or 90°.</li>
+          <li><strong>Zero Open Ends:</strong> All walls intersect cleanly to form closed planar loops, preventing "open
+            polyloop" errors in building energy models.</li>
+          <li><strong>Layer Separation:</strong> Each level is grouped into distinct AutoCAD layers
+            (<code>LEVEL_1</code>, <code>LEVEL_1_POLYLOOPS</code>, <code>LEVEL_1_TEXT</code>).</li>
+          <li><strong>Sequential Overlay Snapping:</strong> The selected base level is converted first. Each following
+            level snaps to the coordinate grid of the level converted immediately before it.</li>
+          <li><strong>Horizontal Spread Export:</strong> Levels can be exported horizontally spaced by 120% of maximum
+            building width with floor labels.</li>
         </ol>
       </div>
     </div>
@@ -431,4 +463,5 @@
 
   <script src="app.js"></script>
 </body>
+
 </html>

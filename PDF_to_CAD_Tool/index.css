@@ -64,16 +64,22 @@ body {
   right: 0;
   height: 5px;
   background: linear-gradient(90deg, #8CBD3A 0%, #4D76AD 33%, #62B8A4 66%, #793E6D 100%);
-  z-index: 1000;
+  z-index: 1001;
 }
 
-/* Header */
+/* Header (Frozen Top Band) */
 .app-header {
-  background: #FFFFFF;
-  border-bottom: 1px solid var(--ob-border);
-  padding: 16px 24px;
+  width: 100%;
+  position: sticky;
+  top: 5px;
   margin-top: 5px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  z-index: 1000;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--ob-border);
+  padding: 12px 24px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
 }
 
 .header-inner {

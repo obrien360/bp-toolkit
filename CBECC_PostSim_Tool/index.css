@@ -10,15 +10,24 @@
   --font-mono: 'JetBrains Mono', 'Consolas', monospace;
 
   /* O'Brien360 Official Brand Palette */
-  --ob360-green: #8CBD3A;       /* Pantone 368 C - Signature Green & Accent Bar */
-  --ob360-teal: #62B8A4;        /* Pantone 3258 C - Teal / Sea Green */
-  --ob360-sage: #66A154;        /* Pantone 7489 C - Sage Green */
-  --ob360-slate-blue: #4D76AD;  /* Pantone 7685 C - Slate Blue / Heading 2 */
-  --ob360-blue: #007AC9;        /* Pantone 2144 C - Hyperlink & Title Blue */
-  --ob360-aubergine: #793E6D;   /* Pantone 2613 C - Aubergine / Heading 1 */
-  --ob360-marine: #507281;      /* Pantone 2222 C - Marine Slate */
-  --ob360-purple: #483662;      /* Pantone 2118 C - Deep Purple / Footers / Heading 3 */
-  --ob360-black: #222222;       /* Black C - Charcoal */
+  --ob360-green: #8CBD3A;
+  /* Pantone 368 C - Signature Green & Accent Bar */
+  --ob360-teal: #62B8A4;
+  /* Pantone 3258 C - Teal / Sea Green */
+  --ob360-sage: #66A154;
+  /* Pantone 7489 C - Sage Green */
+  --ob360-slate-blue: #4D76AD;
+  /* Pantone 7685 C - Slate Blue / Heading 2 */
+  --ob360-blue: #007AC9;
+  /* Pantone 2144 C - Hyperlink & Title Blue */
+  --ob360-aubergine: #793E6D;
+  /* Pantone 2613 C - Aubergine / Heading 1 */
+  --ob360-marine: #507281;
+  /* Pantone 2222 C - Marine Slate */
+  --ob360-purple: #483662;
+  /* Pantone 2118 C - Deep Purple / Footers / Heading 3 */
+  --ob360-black: #222222;
+  /* Black C - Charcoal */
 
   /* O'Brien360 Official Tinted Palette */
   --ob360-tint-green: #CBE5A9;
@@ -116,43 +125,56 @@ body {
 .brand-stripe {
   height: 5px;
   width: 100%;
-  background: linear-gradient(
-    90deg,
-    var(--ob360-green) 0%,
-    var(--ob360-green) 20%,
-    var(--ob360-teal) 20%,
-    var(--ob360-teal) 40%,
-    var(--ob360-slate-blue) 40%,
-    var(--ob360-slate-blue) 60%,
-    var(--ob360-aubergine) 60%,
-    var(--ob360-aubergine) 80%,
-    var(--ob360-purple) 80%,
-    var(--ob360-purple) 100%
-  );
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1001;
+  background: linear-gradient(90deg,
+      var(--ob360-green) 0%,
+      var(--ob360-green) 20%,
+      var(--ob360-teal) 20%,
+      var(--ob360-teal) 40%,
+      var(--ob360-slate-blue) 40%,
+      var(--ob360-slate-blue) 60%,
+      var(--ob360-aubergine) 60%,
+      var(--ob360-aubergine) 80%,
+      var(--ob360-purple) 80%,
+      var(--ob360-purple) 100%);
 }
 
 .app-container {
-  max-width: 1380px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 20px 24px;
+  padding: 24px 24px 40px;
   display: flex;
   flex-direction: column;
   gap: 22px;
 }
 
 /* ==========================================================================
-   Header (O'Brien360 Brand)
+   Header (O'Brien360 Brand - Frozen Top Band)
    ========================================================================== */
 .app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
+  width: 100%;
+  position: sticky;
+  top: 5px;
+  margin-top: 5px;
+  z-index: 1000;
+  padding: 10px 28px;
   background: var(--header-bg);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+}
+
+.header-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
 }
 
 .portal-back-link {
@@ -180,6 +202,7 @@ body {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-shrink: 0;
 }
 
 .logo-wrapper {
@@ -188,14 +211,14 @@ body {
 }
 
 .brand-logo {
-  height: 48px;
+  height: 40px;
   width: auto;
   object-fit: contain;
 }
 
 .brand-divider {
   width: 1px;
-  height: 44px;
+  height: 36px;
   background: var(--border-color);
 }
 
@@ -206,7 +229,7 @@ body {
 
 .header-title {
   font-family: var(--font-heading);
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--text-heading);
   letter-spacing: -0.01em;
@@ -219,7 +242,7 @@ body {
 }
 
 .header-tagline {
-  font-size: 0.76rem;
+  font-size: 0.75rem;
   color: var(--ob360-green);
   font-style: italic;
   font-weight: 600;
@@ -231,6 +254,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .status-chip {
@@ -419,7 +443,8 @@ body.dark-theme .tab-btn.active {
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.drop-box:hover, .drop-box.dragover {
+.drop-box:hover,
+.drop-box.dragover {
   border-color: var(--ob360-green);
   background-color: var(--bg-surface-hover);
 }
@@ -497,6 +522,7 @@ body.dark-theme .source-status-info {
   .append-grid {
     grid-template-columns: 1fr;
   }
+
   .append-plus-col {
     margin: -4px auto;
   }
@@ -1268,7 +1294,8 @@ body.dark-theme .unmapped-warning {
   text-align: left;
 }
 
-.data-table th, .data-table td {
+.data-table th,
+.data-table td {
   padding: 9px 12px;
   border-bottom: 1px solid var(--border-color);
 }
@@ -1299,7 +1326,8 @@ body.dark-theme .data-table th {
   color: var(--text-primary);
 }
 
-.data-table td.num-col, .data-table th.num-col {
+.data-table td.num-col,
+.data-table th.num-col {
   text-align: right;
 }
 
@@ -1376,7 +1404,7 @@ body.dark-theme .footer-address strong {
   align-items: center;
   gap: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), 0 0 10px rgba(140, 189, 58, 0.2);
-  z-index: 1000;
+  z-index: 2000;
   animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   max-width: 360px;
 }
@@ -1401,6 +1429,7 @@ body.dark-theme .footer-address strong {
     opacity: 0;
     transform: translateY(15px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -1688,31 +1717,32 @@ body.dark-theme .csv-target-info code {
    Primary Top-Level Navigation Bar
    ========================================================================== */
 .main-nav-bar {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  background: var(--bg-card);
+  gap: 4px;
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 6px 10px;
-  margin-bottom: 20px;
-  box-shadow: var(--shadow-sm);
+  border-radius: 30px;
+  padding: 4px 6px;
+  margin: 0;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 .nav-tab-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 18px;
+  padding: 7px 16px;
   font-family: var(--font-primary);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--text-secondary);
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 20px;
   cursor: pointer;
   transition: all var(--transition-fast);
+  white-space: nowrap;
 }
 
 .nav-tab-btn:hover {
@@ -1721,14 +1751,53 @@ body.dark-theme .csv-target-info code {
 }
 
 .nav-tab-btn.active {
-  color: #fff;
-  background: var(--ob360-navy);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  color: #fff !important;
+  background: var(--ob360-blue) !important;
+  box-shadow: 0 2px 8px rgba(77, 118, 173, 0.35);
 }
 
-body.light-theme .nav-tab-btn.active {
-  background: var(--ob360-blue);
-  color: #fff;
+body.dark-theme .nav-tab-btn.active {
+  background: var(--ob360-blue) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+@media (max-width: 1120px) {
+  .header-inner {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .main-nav-bar {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-header {
+    padding: 8px 16px;
+  }
+
+  .header-brand {
+    gap: 10px;
+  }
+
+  .brand-logo {
+    height: 32px;
+  }
+
+  .header-tagline {
+    display: none;
+  }
+
+  .main-nav-bar {
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
 }
 
 .nav-badge-pill {
@@ -1775,7 +1844,8 @@ body.light-theme .nav-tab-btn.active {
   transition: all var(--transition-fast);
 }
 
-.qc-drop-box:hover, .qc-drop-box.dragover {
+.qc-drop-box:hover,
+.qc-drop-box.dragover {
   border-color: var(--ob360-teal);
   background: var(--bg-surface-hover);
 }
@@ -2126,7 +2196,8 @@ body:not(.light-theme) .badge-ab1 {
   color: var(--text-secondary);
 }
 
-.qc-table-sm td, .qc-table-sm th {
+.qc-table-sm td,
+.qc-table-sm th {
   padding: 6px 10px;
   font-size: 0.8rem;
 }
@@ -2624,4 +2695,3 @@ body.dark-theme .chip-count {
 .table-total-row td {
   padding: 12px 14px;
 }
-
