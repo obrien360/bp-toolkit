@@ -1,0 +1,9 @@
+,,,Building Area,Space Heating,,Space Cooling,,Interior Lighting,,Receptacle Equipment,,Elevators and escalators,,Fans-Interior,,Service Water Heating,,Space Heating,,Service Water Heating,
+Run ID,Rev #,Scenario,Building Area [ft2],Heating -- General,,Cooling -- General,,Interior Lighting -- ComplianceLtg,,Interior Equipment -- Receptacle,,Interior Equipment -- Internal Transport,,Fans -- Interior Fans,,Water Systems -- General,,Heating -- General,,Water Systems -- General,
+,,,[ft2],[kWh],[W],[kWh],[W],[kWh],[W],[kWh],[W],[kWh],[W],[kWh],[W],[kWh],[W],[therm],[Btu/h],[therm],[Btu/h]
+Run_01,r33,ap,6632.86,6000.95,30084.81,211.22,3145.68,6693.14,2378.99,20100.82,4707.34,1971,225,10677.59,4901.74,2094.94,4332.81,0,0,0,0
+Run_01,r33,Baseline Avg,6632.86,0,0,579.59,7547.37,21620.81,7685.43,20136.69,4707.34,1971,225,33864.94,6736.62,0,0,1086.91,305948.53,160.69,4884.23
+Run_01,r33,ab1,6632.86,0,0,410.24,7115.89,21622.49,7685.43,20100.82,4707.34,1971,225,31713.54,6285.33,0,0,1196.35,305721.96,160.63,4884.23
+Run_01,r33,ab2,6632.86,0,0,528.51,5864.82,21619.13,7685.43,20172.56,4707.34,1971,225,34445.44,6842.1,0,0,1077.09,305712.85,160.74,4884.23
+Run_01,r33,ab3,6632.86,0,0,732.14,7645.16,21619.13,7685.43,20172.56,4707.34,1971,225,34479.27,6886.67,0,0,1013.32,306526.44,160.74,4884.24
+Run_01,r33,ab4,6632.86,0,0,647.47,9563.6,21622.49,7685.43,20100.82,4707.34,1971,225,34821.51,6932.39,0,0,1060.9,305832.88,160.63,4884.23

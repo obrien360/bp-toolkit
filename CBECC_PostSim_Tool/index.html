@@ -89,161 +89,111 @@
 
     <!-- View 1: Simulation Results Container -->
     <div id="compliance-view" class="view-container active">
-      <!-- Ingestion Section: 3 Ways to Load Results -->
+      <!-- Ingestion Section: Select Model Run Folder & Workbooks (1 Row, 4 Selections) -->
       <section class="card source-card">
         <div class="card-header">
           <div class="card-title-group">
             <span class="card-step-badge">1</span>
-            <h2>Load & Ingest Simulation Results</h2>
+            <h2>Select Model Run Folder &amp; Workbooks</h2>
           </div>
           <div class="quick-tips">
             <span>Target Scenarios: <strong>ab1, ab2, ab3, ab4, ap</strong></span>
           </div>
         </div>
 
-        <!-- Mode Selection Tabs -->
-        <div class="ingestion-tabs" id="ingestion-tabs">
-          <button type="button" class="tab-btn active" data-tab="tab-1" id="tab-btn-1">
-            <span class="tab-num">1</span>
-            <span class="tab-text">Load Results CSV</span>
-          </button>
-          <button type="button" class="tab-btn" data-tab="tab-2" id="tab-btn-2">
-            <span class="tab-num">2</span>
-            <span class="tab-text">Extract Model Folder</span>
-          </button>
-          <button type="button" class="tab-btn" data-tab="tab-3" id="tab-btn-3">
-            <span class="tab-num">3</span>
-            <span class="tab-text">Append Model Run to CSV</span>
-          </button>
-        </div>
-
-        <!-- Mode 1: Load Results CSV -->
-        <div class="tab-pane active" id="tab-pane-1">
-          <div class="source-box drop-box" id="drop-zone-csv">
-            <input type="file" id="browser-csv-input" accept=".csv" class="hidden-file-input" />
-            <div class="drop-content">
-              <div class="drop-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="8" y1="13" x2="16" y2="13"></line>
-                  <line x1="8" y1="17" x2="16" y2="17"></line>
-                </svg>
-              </div>
-              <div class="drop-text">
-                <strong>Select or Drag & Drop</strong> a Results CSV file (68-column LEED format)
-              </div>
-              <div class="drop-actions">
-                <button type="button" id="browse-csv-btn" class="btn btn-primary">Choose CSV File</button>
-                <button type="button" id="load-sample-csv-btn" class="btn btn-secondary"
-                  title="Load sample 2394-LEED MDL- Results.csv">Load Sample CSV</button>
+        <!-- 4 Selections in 1 Row -->
+        <div class="source-selection-grid">
+          <!-- Selection 1: Results CSV -->
+          <div class="selection-slot" id="slot-csv">
+            <div class="slot-header">
+              <span class="slot-badge">1</span>
+              <h4>Results CSV</h4>
+              <button type="button" class="slot-clear-btn hidden" id="clear-csv-btn" title="Clear Results CSV">×</button>
+            </div>
+            <div class="compact-drop-zone" id="drop-zone-csv">
+              <input type="file" id="browser-csv-input" accept=".csv" class="hidden-file-input" />
+              <div class="compact-drop-content">
+                <div class="compact-drop-icon">📊</div>
+                <div class="compact-drop-label" id="csv-status-label">Drop CSV or choose</div>
+                <div class="compact-slot-actions">
+                  <button type="button" id="browse-csv-btn" class="btn btn-sm btn-primary">Browse CSV</button>
+                  <button type="button" id="load-sample-csv-btn" class="btn btn-sm btn-outline"
+                    title="Load sample example_project_folder - Results.csv">Sample</button>
+                </div>
               </div>
             </div>
           </div>
-          <div id="csv-status-badge" class="source-status-info hidden"></div>
-        </div>
 
-        <!-- Mode 2: Extract Model Folder -->
-        <div class="tab-pane hidden" id="tab-pane-2">
-          <div class="source-box drop-box" id="drop-zone-folder">
-            <input type="file" id="browser-folder-input" webkitdirectory directory multiple class="hidden-file-input" />
-            <input type="file" id="browser-files-input" multiple accept=".htm,.html" class="hidden-file-input" />
-            <div class="drop-content">
-              <div class="drop-icon">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                </svg>
-              </div>
-              <div class="drop-text">
-                <strong>Select or Drag & Drop</strong> Model Run Folder or .HTM Files
-              </div>
-              <div class="drop-actions">
-                <button type="button" id="browse-folder-btn" class="btn btn-primary">Choose Folder</button>
-                <button type="button" id="browse-files-btn" class="btn btn-outline">Choose Files</button>
-                <button type="button" id="load-sample-folder-btn" class="btn btn-secondary"
-                  title="Load sample example_project_folder">Load Sample Folder</button>
+          <!-- Connector: AND / OR -->
+          <div class="and-or-connector">
+            <span class="and-or-pill">AND / OR</span>
+          </div>
+
+          <!-- Selection 2: Model Run Folder -->
+          <div class="selection-slot" id="slot-folder">
+            <div class="slot-header">
+              <span class="slot-badge">2</span>
+              <h4>Model Run Folder</h4>
+              <button type="button" class="slot-clear-btn hidden" id="clear-folder-btn" title="Clear Model Run Folder">×</button>
+            </div>
+            <div class="compact-drop-zone" id="drop-zone-folder">
+              <input type="file" id="browser-folder-input" webkitdirectory directory multiple class="hidden-file-input" />
+              <input type="file" id="browser-files-input" multiple accept=".htm,.html" class="hidden-file-input" />
+              <div class="compact-drop-content">
+                <div class="compact-drop-icon">📁</div>
+                <div class="compact-drop-label" id="folder-status-label">Drop folder or files</div>
+                <div class="compact-slot-actions">
+                  <button type="button" id="browse-folder-btn" class="btn btn-sm btn-primary">Browse Folder</button>
+                  <button type="button" id="browse-files-btn" class="btn btn-sm btn-outline">Files</button>
+                  <button type="button" id="load-sample-folder-btn" class="btn btn-sm btn-outline"
+                    title="Load sample example_project_folder">Sample</button>
+                </div>
               </div>
             </div>
           </div>
-          <div id="folder-status-badge" class="source-status-info hidden"></div>
-          <div id="unmapped-warning" class="unmapped-warning hidden" role="alert"></div>
-        </div>
 
-        <!-- Mode 3: Append Model Run to CSV -->
-        <div class="tab-pane hidden" id="tab-pane-3">
-          <div class="append-workflow-box">
-            <div class="append-grid">
-              <!-- Slot A: Base CSV -->
-              <div class="append-slot" id="append-slot-csv">
-                <div class="slot-header">
-                  <span class="slot-badge">Step A</span>
-                  <h4>Base Results CSV</h4>
-                </div>
-                <input type="file" id="append-csv-input" accept=".csv" class="hidden-file-input" />
-                <div class="slot-drop-area" id="append-drop-csv">
-                  <div class="slot-icon">📄</div>
-                  <div class="slot-label" id="append-csv-status">No CSV loaded yet</div>
-                  <div class="slot-actions">
-                    <button type="button" id="append-browse-csv-btn" class="btn btn-sm btn-primary">Select CSV</button>
-                    <button type="button" id="append-sample-csv-btn" class="btn btn-sm btn-secondary">Use Sample
-                      CSV</button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Flow Divider -->
-              <div class="append-plus-col">
-                <div class="append-plus-icon">+</div>
-              </div>
-
-              <!-- Slot B: Model Run Folder -->
-              <div class="append-slot" id="append-slot-folder">
-                <div class="slot-header">
-                  <span class="slot-badge">Step B</span>
-                  <h4>New Model Run Folder (.htm)</h4>
-                </div>
-                <input type="file" id="append-folder-input" webkitdirectory directory multiple
-                  class="hidden-file-input" />
-                <input type="file" id="append-files-input" multiple accept=".htm,.html" class="hidden-file-input" />
-                <div class="slot-drop-area" id="append-drop-folder">
-                  <div class="slot-icon">📁</div>
-                  <div class="slot-label" id="append-folder-status">No folder or HTM files loaded</div>
-                  <div class="slot-actions">
-                    <button type="button" id="append-browse-folder-btn" class="btn btn-sm btn-primary">Select
-                      Folder</button>
-                    <button type="button" id="append-browse-files-btn" class="btn btn-sm btn-outline">Select
-                      Files</button>
-                    <button type="button" id="append-sample-folder-btn" class="btn btn-sm btn-secondary">Use Sample
-                      Folder</button>
-                  </div>
+          <!-- Selection 3: CBECC Model Workbook -->
+          <div class="selection-slot" id="slot-cbecc-wb">
+            <div class="slot-header">
+              <span class="slot-badge">3</span>
+              <h4>CBECC Model Workbook</h4>
+              <button type="button" class="slot-clear-btn hidden" id="clear-wb-btn" title="Clear Workbook">×</button>
+            </div>
+            <div class="compact-drop-zone" id="drop-zone-wb">
+              <input type="file" id="browser-wb-input" accept=".xlsm,.xlsx" class="hidden-file-input" />
+              <div class="compact-drop-content">
+                <div class="compact-drop-icon">📗</div>
+                <div class="compact-drop-label" id="wb-status-label">QC &amp; Comparison (.xlsm)</div>
+                <div class="compact-slot-actions">
+                  <button type="button" id="browse-wb-btn" class="btn btn-sm btn-primary">Browse .xlsm</button>
+                  <button type="button" id="load-sample-wb-btn" class="btn btn-sm btn-outline"
+                    title="Load sample CBECC Model Workbook - example2.xlsm">Sample</button>
                 </div>
               </div>
             </div>
+          </div>
 
-            <!-- Append Parameters & Action -->
-            <div class="append-action-bar">
-              <div class="append-fields">
-                <div class="field-item">
-                  <label for="append-run-id">New Run ID:</label>
-                  <input type="text" id="append-run-id" class="text-input-sm" value="Run_02"
-                    placeholder="e.g. Run_02" />
-                </div>
-                <div class="field-item">
-                  <label for="append-revision">New Rev #:</label>
-                  <input type="text" id="append-revision" class="text-input-sm" value="r34" placeholder="e.g. r34" />
+          <!-- Selection 4: EUI Comparison Workbook (Placeholder) -->
+          <div class="selection-slot slot-disabled" id="slot-eui-comp">
+            <div class="slot-header">
+              <span class="slot-badge">4</span>
+              <h4>EUI Comparison Workbook</h4>
+              <span class="badge badge-subtle">Placeholder</span>
+            </div>
+            <div class="compact-drop-zone disabled-zone">
+              <div class="compact-drop-content">
+                <div class="compact-drop-icon">📈</div>
+                <div class="compact-drop-label">Historical Projects Data</div>
+                <div class="compact-slot-actions">
+                  <button type="button" class="btn btn-sm btn-outline" disabled
+                    title="Compare EUI by category with previous projects (Next update)">Coming Soon</button>
                 </div>
               </div>
-              <button type="button" id="execute-load-dashboard-btn" class="btn btn-primary btn-lg" disabled>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                </svg>
-                Load Dashboard
-              </button>
             </div>
-            <div id="append-status-badge" class="source-status-info hidden"></div>
           </div>
         </div>
+
+        <div id="unmapped-warning" class="unmapped-warning hidden" role="alert"></div>
 
         <!-- File Badges / Scenarios List -->
         <div id="scenarios-container" class="scenarios-container hidden">
@@ -272,14 +222,38 @@
       <!-- Main Dashboard Area -->
       <main id="dashboard-area" class="dashboard-area hidden">
 
+        <!-- Section 2: Building Area & Category Mapping -->
         <section class="card scenario-areas-card">
           <div class="card-header">
             <div class="card-title-group"><span class="card-step-badge">2</span>
-              <h2>Building Areas</h2>
+              <h2>Building Area &amp; Category Mapping</h2>
             </div>
-            <span class="table-subtitle">Editable values used by the EUI units and CSV export</span>
+            <span class="table-subtitle">Set building area for EUI and customize how non-zero EAp2-4/5 categories map to plot end-uses</span>
           </div>
-          <div id="scenario-areas" class="scenario-areas"></div>
+
+          <div class="section-2-grid">
+            <!-- Subcol A: Building Areas -->
+            <div class="section-2-col building-areas-subcol">
+              <div class="subcard-header">
+                <h4 class="subcard-title">Building Areas [ft²]</h4>
+                <span class="subcard-hint">Used for EUI (kBtu/ft²) calculations</span>
+              </div>
+              <div id="scenario-areas" class="scenario-areas"></div>
+            </div>
+
+            <!-- Subcol B: Category Mapping -->
+            <div class="section-2-col category-mapping-subcol">
+              <div class="subcard-header">
+                <div class="subcard-title-group">
+                  <h4 class="subcard-title">EAp2-4/5 End-Use Category Mapping</h4>
+                  <span id="mapping-status-hint" class="subcard-hint">Default mapping from fixed definitions. Locked categories (🔒) are set by loaded CSV.</span>
+                </div>
+              </div>
+              <div id="category-mapping-container" class="category-mapping-table-wrap">
+                <!-- Dynamically generated rows of non-zero categories -->
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- Interactive Controls Toolbar -->
@@ -301,6 +275,8 @@
               <div class="segmented-control unit-control" id="unit-control">
                 <button class="seg-btn active" data-unit="kBtu">kBtu (Total Combined)</button>
                 <button class="seg-btn" data-unit="eui">kBtu/ft2 (Total Combined)</button>
+                <button class="seg-btn" data-unit="eui-elec">kBtu/ft2 (Electricity)</button>
+                <button class="seg-btn" data-unit="eui-gas">kBtu/ft2 (Natural Gas)</button>
                 <button class="seg-btn" data-unit="kWh">kWh (Electricity)</button>
                 <button class="seg-btn" data-unit="therm">therm (Natural Gas)</button>
               </div>
@@ -345,44 +321,20 @@
               </label>
             </div>
           </div>
-        </section>
 
-        <!-- Metric Highlights Cards -->
-        <section class="metrics-grid">
-          <div class="metric-card card">
-            <div class="metric-header">
-              <span class="metric-label">Total Energy (<span class="unit-label">kBtu</span>)</span>
-              <div class="metric-icon total-icon">⚡</div>
+          <!-- Chart Category Visibility Filter Bar -->
+          <div class="chart-category-filter-bar" id="chart-category-filters">
+            <div class="filter-bar-header">
+              <span class="filter-bar-label">Chart Categories:</span>
+              <div class="filter-bar-actions">
+                <button type="button" id="cat-filter-all-btn" class="btn-link">Select All</button>
+                <span class="divider">|</span>
+                <button type="button" id="cat-filter-none-btn" class="btn-link">Clear</button>
+              </div>
             </div>
-            <div class="metric-value" id="metric-total-energy">-</div>
-            <div class="metric-meta" id="metric-total-subtitle">Selected scenarios average</div>
-          </div>
-
-          <div class="metric-card card">
-            <div class="metric-header">
-              <span class="metric-label">Electricity Share</span>
-              <div class="metric-icon elec-icon">💡</div>
+            <div class="category-filter-chips" id="category-filter-chips">
+              <!-- Dynamically populated category checkboxes/chips -->
             </div>
-            <div class="metric-value" id="metric-elec-val">-</div>
-            <div class="metric-meta" id="metric-elec-percent">- % of total energy</div>
-          </div>
-
-          <div class="metric-card card">
-            <div class="metric-header">
-              <span class="metric-label">Natural Gas Share</span>
-              <div class="metric-icon gas-icon">🔥</div>
-            </div>
-            <div class="metric-value" id="metric-gas-val">-</div>
-            <div class="metric-meta" id="metric-gas-percent">- % of total energy</div>
-          </div>
-
-          <div class="metric-card card">
-            <div class="metric-header">
-              <span class="metric-label">Dominant End-Use</span>
-              <div class="metric-icon peak-icon">🏆</div>
-            </div>
-            <div class="metric-value" id="metric-peak-category">-</div>
-            <div class="metric-meta" id="metric-peak-val">-</div>
           </div>
         </section>
 

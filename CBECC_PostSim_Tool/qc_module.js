@@ -1704,6 +1704,12 @@
     init: initQCModule,
     loadSampleData: loadSampleQCData,
     handleBrowserFolderUpload: handleBrowserFolderUpload,
+    handleWorkbookFile: handleExcelUpload,
+    onSharedFolderUpdated: function (folderPath, folderName, sourceTab, fileList = null) {
+      if (fileList && fileList.length > 0) {
+        handleBrowserFolderUpload(fileList);
+      }
+    },
     render: renderQCWorkspace,
     state: state
   };

@@ -6,9 +6,10 @@
 window.CBECC_SHARED = window.CBECC_SHARED || {
   activeFolderPath: '',
   activeFolderName: '',
+  activeWorkbookFile: null,
   sourceTab: '',
   filesList: null,
-  setFolder: function(folderPath, folderName, sourceTab, files = null) {
+  setFolder: function (folderPath, folderName, sourceTab, files = null) {
     this.activeFolderPath = folderPath || '';
     this.activeFolderName = folderName || folderPath || '';
     this.sourceTab = sourceTab || '';
@@ -18,6 +19,13 @@ window.CBECC_SHARED = window.CBECC_SHARED || {
     }
     if (window.QCModule && typeof window.QCModule.onSharedFolderUpdated === 'function') {
       window.QCModule.onSharedFolderUpdated(this.activeFolderPath, this.activeFolderName, this.sourceTab, this.filesList);
+    }
+  },
+  setWorkbook: function (file, sourceTab) {
+    this.activeWorkbookFile = file;
+    this.sourceTab = sourceTab || '';
+    if (window.QCModule && typeof window.QCModule.handleWorkbookFile === 'function') {
+      window.QCModule.handleWorkbookFile(file);
     }
   }
 };
@@ -32,15 +40,30 @@ const CONVERSIONS = {
   KWH_TO_THERM: 1.0 / 29.3071,
 };
 
+// Standard Mapped Categories (Default Options in UI)
+const STANDARD_MAPPED_CATEGORIES = [
+  'Space Heating',
+  'Space Cooling',
+  'Interior Lighting',
+  'Exterior lighting',
+  'Receptacle Equipment',
+  'Elevators and escalators',
+  'Fans-Interior',
+  'Fans-Parking Garage',
+  'Pumps',
+  'Heat Rejection',
+  'Service Water Heating'
+];
+
 // O'Brien360 Official Brand Palette
 const SCENARIO_COLORS = {
-  ap:             '#8CBD3A', // Pantone 368 C  - Signature O'Brien Green (Proposed Design)
+  ap: '#8CBD3A', // Pantone 368 C  - Signature O'Brien Green (Proposed Design)
   'baseline avg': '#4D76AD', // Pantone 7685 C - Slate Blue (Baseline Average)
-  ab_avg:         '#4D76AD',
-  ab1:            '#507281', // Pantone 2222 C - Marine Slate (Baseline 1)
-  ab2:            '#62B8A4', // Pantone 3258 C - Teal (Baseline 2)
-  ab3:            '#793E6D', // Pantone 2613 C - Aubergine (Baseline 3)
-  ab4:            '#007AC9', // Pantone 2144 C - Title & Hyperlink Blue (Baseline 4)
+  ab_avg: '#4D76AD',
+  ab1: '#507281', // Pantone 2222 C - Marine Slate (Baseline 1)
+  ab2: '#62B8A4', // Pantone 3258 C - Teal (Baseline 2)
+  ab3: '#793E6D', // Pantone 2613 C - Aubergine (Baseline 3)
+  ab4: '#007AC9', // Pantone 2144 C - Title & Hyperlink Blue (Baseline 4)
 };
 
 const CHART_COLORS = [
@@ -61,14 +84,8 @@ const CHART_COLORS = [
 ];
 
 // =============================================================================
-// Fixed Category Definitions
+// Fixed Category Definitions (Default Mappings)
 // All rows that ever appear in EAp2-4/5 CBECC-Com tables.
-// electricityOnly: true means Gas columns show dash
-// gasOnly: true means Electricity columns show dash
-// =============================================================================
-// =============================================================================
-// Dashboard Category Definitions (11 Compliance Categories)
-// Mapped to raw categories extracted from CBECC HTM files.
 // =============================================================================
 const FIXED_CATEGORIES = [
   {
@@ -175,12 +192,135 @@ const FIXED_CATEGORIES = [
 ];
 
 /**
- * Aggregates a rawCategoryMap (keyed by HTM categories) into the 11 dashboard compliance categories.
- * Category values are summed (e.g. Fans-Interior = Fans -- General + Fans -- Interior Fans).
+ * Returns default mapped user category name for a raw category and fuel type.
  */
-function buildDashboardCategoryMap(rawCategoryMap) {
+function getDefaultCategoryMapping(rawCategory, fuel = 'elec') {
+  if (!rawCategory) return 'Other';
+  for (const fc of FIXED_CATEGORIES) {
+    if (fuel === 'elec' && fc.elecHtmCategories && fc.elecHtmCategories.includes(rawCategory)) {
+      return fc.raw;
+    }
+    if (fuel === 'gas' && fc.gasHtmCategories && fc.gasHtmCategories.includes(rawCategory)) {
+      return fc.raw;
+    }
+    if (fc.raw.toLowerCase() === rawCategory.toLowerCase()) {
+      return fc.raw;
+    }
+  }
+
+  // Fallback heuristics
+  const lower = rawCategory.toLowerCase();
+  if (lower.includes('heat') && !lower.includes('rejection')) return 'Space Heating';
+  if (lower.includes('cool')) return 'Space Cooling';
+  if (lower.includes('interior lighting') || lower.includes('complianceltg')) return 'Interior Lighting';
+  if (lower.includes('exterior lighting')) return 'Exterior lighting';
+  if (lower.includes('transport') || lower.includes('elevator')) return 'Elevators and escalators';
+  if (lower.includes('garage') || lower.includes('processmotor')) return 'Fans-Parking Garage';
+  if (lower.includes('fan')) return 'Fans-Interior';
+  if (lower.includes('pump')) return 'Pumps';
+  if (lower.includes('rejection')) return 'Heat Rejection';
+  if (lower.includes('water')) return 'Service Water Heating';
+  if (lower.includes('receptacle') || lower.includes('equipment') || lower.includes('refrig') || lower.includes('process')) {
+    return 'Receptacle Equipment';
+  }
+  return clean_category_name(rawCategory);
+}
+
+/**
+ * Cleans CBECC raw category name by removing redundant suffixes.
+ */
+function clean_category_name(rawName) {
+  if (!rawName) return '';
+  if (rawName.includes(' -- ')) {
+    const parts = rawName.split(' -- ');
+    const prefix = parts[0].trim();
+    const suffix = parts[1].trim();
+    if (suffix === 'General' || suffix === 'Not Subdivided') return prefix;
+    return `${prefix} (${suffix})`;
+  }
+  return rawName.trim();
+}
+
+/**
+ * Aggregates a rawCategoryMap into dashboard categories based on dynamic mapping rules
+ * or fallback FIXED_CATEGORIES.
+ */
+function buildDashboardCategoryMap(rawCategoryMap, mappingRules = (state && state.categoryMapping)) {
   const categoryMap = {};
 
+  const ruleKeys = mappingRules ? Object.keys(mappingRules) : [];
+  if (ruleKeys.length > 0) {
+    // 1. Initialize all mapped target categories so order/presence is established
+    ruleKeys.forEach(k => {
+      const rule = mappingRules[k];
+      const targetCat = rule.userCategory || rule.rawCategory;
+      if (!categoryMap[targetCat]) {
+        categoryMap[targetCat] = {
+          rawCategory: targetCat,
+          label: targetCat,
+          isTotal: false,
+          elecKwh: 0,
+          elecDemW: 0,
+          gasTherm: 0,
+          gasDemBtuh: 0,
+          elecKbtu: 0,
+          gasKbtu: 0,
+          totalKbtu: 0
+        };
+      }
+    });
+
+    // 2. Aggregate each raw category from rawCategoryMap
+    if (rawCategoryMap) {
+      Object.keys(rawCategoryMap).forEach(rawCat => {
+        const rawObj = rawCategoryMap[rawCat];
+        if (!rawObj || rawObj.isTotal) return;
+
+        // Electricity mapping
+        const elecKey = `${rawCat}___elec`;
+        const elecRule = mappingRules[elecKey];
+        const elecTarget = elecRule ? (elecRule.userCategory || rawCat) : getDefaultCategoryMapping(rawCat, 'elec');
+        if (!categoryMap[elecTarget]) {
+          categoryMap[elecTarget] = {
+            rawCategory: elecTarget,
+            label: elecTarget,
+            isTotal: false,
+            elecKwh: 0, elecDemW: 0, gasTherm: 0, gasDemBtuh: 0,
+            elecKbtu: 0, gasKbtu: 0, totalKbtu: 0
+          };
+        }
+        categoryMap[elecTarget].elecKwh += (rawObj.elecKwh || 0);
+        categoryMap[elecTarget].elecDemW += (rawObj.elecDemW || 0);
+
+        // Natural Gas mapping
+        const gasKey = `${rawCat}___gas`;
+        const gasRule = mappingRules[gasKey];
+        const gasTarget = gasRule ? (gasRule.userCategory || rawCat) : getDefaultCategoryMapping(rawCat, 'gas');
+        if (!categoryMap[gasTarget]) {
+          categoryMap[gasTarget] = {
+            rawCategory: gasTarget,
+            label: gasTarget,
+            isTotal: false,
+            elecKwh: 0, elecDemW: 0, gasTherm: 0, gasDemBtuh: 0,
+            elecKbtu: 0, gasKbtu: 0, totalKbtu: 0
+          };
+        }
+        categoryMap[gasTarget].gasTherm += (rawObj.gasTherm || 0);
+        categoryMap[gasTarget].gasDemBtuh += (rawObj.gasDemBtuh || 0);
+      });
+    }
+
+    // 3. Compute energy conversions
+    Object.values(categoryMap).forEach(cat => {
+      cat.elecKbtu = cat.elecKwh * CONVERSIONS.KWH_TO_KBTU;
+      cat.gasKbtu = cat.gasTherm * CONVERSIONS.THERM_TO_KBTU;
+      cat.totalKbtu = cat.elecKbtu + cat.gasKbtu;
+    });
+
+    return categoryMap;
+  }
+
+  // Fallback to static FIXED_CATEGORIES
   FIXED_CATEGORIES.forEach(fc => {
     let elecKwh = 0;
     let elecDemW = 0;
@@ -203,7 +343,6 @@ function buildDashboardCategoryMap(rawCategoryMap) {
       }
     });
 
-    // If rawCategoryMap already has this dashboard category directly
     if (rawCategoryMap && rawCategoryMap[fc.raw] && !fc.elecHtmCategories.includes(fc.raw)) {
       const direct = rawCategoryMap[fc.raw];
       elecKwh += (direct.elecKwh || 0);
@@ -213,7 +352,7 @@ function buildDashboardCategoryMap(rawCategoryMap) {
     }
 
     const elecKbtu = elecKwh * CONVERSIONS.KWH_TO_KBTU;
-    const gasKbtu  = gasTherm * CONVERSIONS.THERM_TO_KBTU;
+    const gasKbtu = gasTherm * CONVERSIONS.THERM_TO_KBTU;
 
     categoryMap[fc.raw] = {
       rawCategory: fc.raw,
@@ -444,39 +583,40 @@ function sortScenarios(scenarios) {
 const state = {
   activeIngestionMethod: 1,  // 1: Results CSV, 2: Model Folder, 3: Append
 
-  rawScenarios: [],        // Original parsed scenarios from folder
-  scenarios: [],           // All display scenarios (including Baseline Avg if enabled)
+  // Loaded inputs
+  loadedCsv: null,           // { file, name, text, scenarios, rows, mappings, colDefs, isThreeHeader }
+  loadedFolder: null,        // { files, name, rawScenarios }
+  loadedWorkbook: null,      // { file, name }
+
+  categoryMapping: {},       // { [rawCat___fuel]: { userCategory, locked, rawCategory, fuel, source } }
+  visibleCategories: new Set(), // Set of active mapped categories to display in chart
+
+  rawScenarios: [],          // Original parsed scenarios from folder
+  scenarios: [],             // All display scenarios (including Baseline Avg if enabled)
   baselineAvgScenario: null, // Computed Baseline Avg scenario
-  selectedScenarios: [],   // Array of active scenario names
-  activeScenario: null,    // Single scenario name when in single view
-  baselineScenario: null,  // Baseline scenario name for variance calculations
-  averageBaselines: true,  // Calculate and display average of ab1-ab4 (default true)
-  selectedFolderName: '',  // Current project folder name
+  selectedScenarios: [],     // Array of active scenario names
+  activeScenario: null,      // Single scenario name when in single view
+  baselineScenario: null,    // Baseline scenario name for variance calculations
+  averageBaselines: true,    // Calculate and display average of ab1-ab4 (default true)
+  selectedFolderName: '',    // Current project folder name
   buildingAreaType: 'conditioned',
   buildingArea: 0,
 
   // Mode 1 & 3: CSV and Append State
-  loadedCsvRows: [],                  // Array of raw CSV rows (header 1, header 2, data rows)
-  baseCsvFilename: '',                // Filename of loaded base CSV
-  isAppendedData: false,              // True if currently displaying appended data
-  method3BaseCsvRows: null,           // Base CSV rows for Method 3
-  method3BaseCsvText: '',             // Base CSV raw text for Method 3
-  method3BaseFilename: '',            // Base CSV filename for Method 3
-  method3NewScenarios: [],            // Extracted HTM scenarios pending append
-  method3ExtractedRunScenarios: [],   // Scenarios of new run available in checklist for appending
+  loadedCsvRows: [],         // Array of raw CSV rows (header 1, header 2, data rows)
+  baseCsvFilename: '',       // Filename of loaded base CSV
+  isAppendedData: false,     // True if currently displaying appended data
 
-  viewMode: 'compare',     // 'compare' | 'stacked'
-  energyUnit: 'kBtu',       // 'kBtu' | 'kWh' | 'therm' | 'eui'
-  chartType: 'bar',        // 'bar' | 'stacked-bar' | 'doughnut' | 'horizontalBar' | 'radar'
+  viewMode: 'compare',       // 'compare' | 'stacked'
+  energyUnit: 'kBtu',        // 'kBtu' | 'eui' | 'eui-elec' | 'eui-gas' | 'kWh' | 'therm'
+  chartType: 'bar',          // 'bar' | 'stacked-bar' | 'doughnut' | 'horizontalBar' | 'radar'
 
-  cleanLabels: true,       // Strip redundant suffixes
-  hideZeroes: true,        // Hide zero rows (chart only)
+  cleanLabels: true,         // Strip redundant suffixes
+  hideZeroes: true,          // Hide zero rows (chart only)
 
   chartInstance: null,
   isServerOnline: false,
-  csvExportDirHandle: null,   // FileSystemDirectoryHandle from showDirectoryPicker()
-  method3BaseFileHandle: null,// FileSystemFileHandle for the output CSV in Method 3
-  method3BaseCsvFileHandle: null, // FileSystemFileHandle for the loaded base CSV (used as startIn for save dialog)
+  csvExportDirHandle: null,  // FileSystemDirectoryHandle from showDirectoryPicker()
 };
 
 // =============================================================================
@@ -487,50 +627,42 @@ const elements = {
   themeIcon: document.getElementById('theme-icon'),
   serverStatus: document.getElementById('server-status'),
 
-  // Ingestion Mode Tabs
-  tabBtn1: document.getElementById('tab-btn-1'),
-  tabBtn2: document.getElementById('tab-btn-2'),
-  tabBtn3: document.getElementById('tab-btn-3'),
-  tabPane1: document.getElementById('tab-pane-1'),
-  tabPane2: document.getElementById('tab-pane-2'),
-  tabPane3: document.getElementById('tab-pane-3'),
-
-  // Mode 1: Results CSV
+  // Selection 1: Results CSV
+  slotCsv: document.getElementById('slot-csv'),
   dropZoneCsv: document.getElementById('drop-zone-csv'),
   browserCsvInput: document.getElementById('browser-csv-input'),
   browseCsvBtn: document.getElementById('browse-csv-btn'),
   loadSampleCsvBtn: document.getElementById('load-sample-csv-btn'),
-  csvStatusBadge: document.getElementById('csv-status-badge'),
+  csvStatusLabel: document.getElementById('csv-status-label'),
+  clearCsvBtn: document.getElementById('clear-csv-btn'),
 
-  // Mode 2: Model Folder
+  // Selection 2: Model Run Folder
+  slotFolder: document.getElementById('slot-folder'),
   dropZoneFolder: document.getElementById('drop-zone-folder'),
   browserFolderInput: document.getElementById('browser-folder-input'),
   browserFilesInput: document.getElementById('browser-files-input'),
   browseFolderBtn: document.getElementById('browse-folder-btn'),
   browseFilesBtn: document.getElementById('browse-files-btn'),
   loadSampleFolderBtn: document.getElementById('load-sample-folder-btn'),
-  folderStatusBadge: document.getElementById('folder-status-badge'),
+  folderStatusLabel: document.getElementById('folder-status-label'),
+  clearFolderBtn: document.getElementById('clear-folder-btn'),
+
+  // Selection 3: CBECC Model Workbook
+  slotCbeccWb: document.getElementById('slot-cbecc-wb'),
+  dropZoneWb: document.getElementById('drop-zone-wb'),
+  browserWbInput: document.getElementById('browser-wb-input'),
+  browseWbBtn: document.getElementById('browse-wb-btn'),
+  loadSampleWbBtn: document.getElementById('load-sample-wb-btn'),
+  wbStatusLabel: document.getElementById('wb-status-label'),
+  clearWbBtn: document.getElementById('clear-wb-btn'),
+
+  // Selection 4: EUI Comparison Workbook (Placeholder)
+  slotEuiComp: document.getElementById('slot-eui-comp'),
+
   unmappedWarning: document.getElementById('unmapped-warning'),
   scenarioAreas: document.getElementById('scenario-areas'),
-
-  // Mode 3: Append
-  appendCsvInput: document.getElementById('append-csv-input'),
-  appendDropCsv: document.getElementById('append-drop-csv'),
-  appendCsvStatus: document.getElementById('append-csv-status'),
-  appendBrowseCsvBtn: document.getElementById('append-browse-csv-btn'),
-  appendSampleCsvBtn: document.getElementById('append-sample-csv-btn'),
-  appendFolderInput: document.getElementById('append-folder-input'),
-  appendFilesInput: document.getElementById('append-files-input'),
-  appendDropFolder: document.getElementById('append-drop-folder'),
-  appendFolderStatus: document.getElementById('append-folder-status'),
-  appendBrowseFolderBtn: document.getElementById('append-browse-folder-btn'),
-  appendBrowseFilesBtn: document.getElementById('append-browse-files-btn'),
-  appendSampleFolderBtn: document.getElementById('append-sample-folder-btn'),
-  appendRunId: document.getElementById('append-run-id'),
-  appendRevision: document.getElementById('append-revision'),
-  executeLoadDashboardBtn: document.getElementById('execute-load-dashboard-btn') || document.getElementById('execute-append-btn'),
-  executeAppendBtn: document.getElementById('execute-load-dashboard-btn') || document.getElementById('execute-append-btn'),
-  appendStatusBadge: document.getElementById('append-status-badge'),
+  categoryMappingContainer: document.getElementById('category-mapping-container'),
+  mappingStatusHint: document.getElementById('mapping-status-hint'),
 
   scenariosContainer: document.getElementById('scenarios-container'),
   scenariosCountBadge: document.getElementById('scenarios-count-badge'),
@@ -553,6 +685,13 @@ const elements = {
   cleanLabelsToggle: document.getElementById('clean-labels-toggle'),
   hideZeroesToggle: document.getElementById('hide-zeroes-toggle'),
 
+  // Chart Category Filter Controls
+  chartCategoryFilters: document.getElementById('chart-category-filters'),
+  catFilterAllBtn: document.getElementById('cat-filter-all-btn'),
+  catFilterNoneBtn: document.getElementById('cat-filter-none-btn'),
+  categoryFilterChips: document.getElementById('category-filter-chips'),
+
+  // Metric elements (guarded for backward compatibility)
   metricTotalEnergy: document.getElementById('metric-total-energy'),
   metricTotalSubtitle: document.getElementById('metric-total-subtitle'),
   metricElecVal: document.getElementById('metric-elec-val'),
@@ -575,7 +714,7 @@ const elements = {
   copyExcelBtn: document.getElementById('copy-excel-btn'),
   exportExcelBtn: document.getElementById('export-excel-btn'),
 
-  // CSV Export panel (Method 2)
+  // CSV Export panel (Mode 2: Folder Only)
   csvExportSection: document.getElementById('csv-export-section'),
   csvExportFilename: document.getElementById('csv-export-filename'),
   csvExportLocation: document.getElementById('csv-export-location'),
@@ -587,7 +726,7 @@ const elements = {
   csvBrowseFolderBtn: document.getElementById('csv-browse-folder-btn'),
   csvLocationStatus: document.getElementById('csv-location-status'),
 
-  // CSV Append panel (Method 3)
+  // CSV Append panel (Mode 3: Both CSV + Folder)
   csvAppendSection: document.getElementById('csv-append-section'),
   appendTargetCsvName: document.getElementById('append-target-csv-name'),
   appendScenarioChecklist: document.getElementById('append-scenario-checklist'),
@@ -596,6 +735,8 @@ const elements = {
   appendExportFilename: document.getElementById('append-export-filename'),
   appendExportLocation: document.getElementById('append-export-location'),
   appendDownloadCsvBtn: document.getElementById('append-download-csv-btn'),
+  appendRunId: document.getElementById('append-run-id') || document.getElementById('csv-run-id'),
+  appendRevision: document.getElementById('append-revision') || document.getElementById('csv-revision'),
 
   toast: document.getElementById('toast'),
   toastTitle: document.getElementById('toast-title'),
@@ -671,8 +812,8 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
   // Locate column indices
   let elecEnergyIdx = -1;
   let elecDemandIdx = -1;
-  let gasEnergyIdx  = -1;
-  let gasDemandIdx  = -1;
+  let gasEnergyIdx = -1;
+  let gasDemandIdx = -1;
 
   headerCells.forEach((cell, idx) => {
     const lower = cell.toLowerCase();
@@ -685,8 +826,8 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
   // Fallback column guesses
   if (elecEnergyIdx === -1) elecEnergyIdx = 1;
   if (elecDemandIdx === -1) elecDemandIdx = 2;
-  if (gasEnergyIdx  === -1) gasEnergyIdx  = 3;
-  if (gasDemandIdx  === -1) gasDemandIdx  = 4;
+  if (gasEnergyIdx === -1) gasEnergyIdx = 3;
+  if (gasDemandIdx === -1) gasDemandIdx = 4;
 
   // Build a lookup map: rawCategory -> data object
   // Build a lookup map: rawCategory -> data object from HTM table
@@ -697,14 +838,14 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
     if (cells.length === 0 || !cells[0]) continue;
 
     const catLabel = cells[0];
-    const elecKwh    = parseNumber(cells[elecEnergyIdx]);
-    const elecDemW   = parseNumber(cells[elecDemandIdx]);
-    const gasTherm   = parseNumber(cells[gasEnergyIdx]);
+    const elecKwh = parseNumber(cells[elecEnergyIdx]);
+    const elecDemW = parseNumber(cells[elecDemandIdx]);
+    const gasTherm = parseNumber(cells[gasEnergyIdx]);
     const gasDemBtuh = parseNumber(cells[gasDemandIdx]);
-    const isTotal    = catLabel.toLowerCase().includes('total');
+    const isTotal = catLabel.toLowerCase().includes('total');
 
-    const elecKbtu = elecKwh  * CONVERSIONS.KWH_TO_KBTU;
-    const gasKbtu  = gasTherm * CONVERSIONS.THERM_TO_KBTU;
+    const elecKbtu = elecKwh * CONVERSIONS.KWH_TO_KBTU;
+    const gasKbtu = gasTherm * CONVERSIONS.THERM_TO_KBTU;
 
     rawCategoryMap[catLabel] = {
       rawCategory: catLabel,
@@ -735,13 +876,13 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
   let totalGasTherm = 0;
   Object.values(categoryMap).forEach(r => {
     if (!r.isTotal) {
-      totalElecKwh  += r.elecKwh;
+      totalElecKwh += r.elecKwh;
       totalGasTherm += r.gasTherm;
     }
   });
 
-  const totalElecKbtu = totalElecKwh  * CONVERSIONS.KWH_TO_KBTU;
-  const totalGasKbtu  = totalGasTherm * CONVERSIONS.THERM_TO_KBTU;
+  const totalElecKbtu = totalElecKwh * CONVERSIONS.KWH_TO_KBTU;
+  const totalGasKbtu = totalGasTherm * CONVERSIONS.THERM_TO_KBTU;
   const grandTotalKbtu = totalElecKbtu + totalGasKbtu;
 
   return {
@@ -751,13 +892,13 @@ function extractComplianceFromHTML(htmlString, sourceName = '') {
     rawCategoryMap,
     unmappedCategories,
     summary: {
-      totalElectricity_kWh:  totalElecKwh,
+      totalElectricity_kWh: totalElecKwh,
       totalNaturalGas_therm: totalGasTherm,
       totalElectricity_kBtu: totalElecKbtu,
-      totalNaturalGas_kBtu:  totalGasKbtu,
-      grandTotal_kBtu:       grandTotalKbtu,
+      totalNaturalGas_kBtu: totalGasKbtu,
+      grandTotal_kBtu: grandTotalKbtu,
       electricitySharePercent: grandTotalKbtu > 0 ? (totalElecKbtu / grandTotalKbtu) * 100 : 0,
-      naturalGasSharePercent:  grandTotalKbtu > 0 ? (totalGasKbtu  / grandTotalKbtu) * 100 : 0,
+      naturalGasSharePercent: grandTotalKbtu > 0 ? (totalGasKbtu / grandTotalKbtu) * 100 : 0,
     },
   };
 }
@@ -773,77 +914,75 @@ function getCategoryEnergyValue(catData, unit = state.energyUnit) {
   return catData.totalKbtu;
 }
 
+function getDisplayUnitLabel() {
+  if (state.energyUnit === 'eui') return 'kBtu/ft2 (Total Combined)';
+  if (state.energyUnit === 'eui-elec') return 'kBtu/ft2 (Electricity)';
+  if (state.energyUnit === 'eui-gas') return 'kBtu/ft2 (Natural Gas)';
+  if (state.energyUnit === 'kWh') return 'kWh (Electricity)';
+  if (state.energyUnit === 'therm') return 'therm (Natural Gas)';
+  return 'kBtu (Total Combined)';
+}
+
 function getScenarioCategoryEnergyValue(sc, catData) {
-  const value = getCategoryEnergyValue(catData, state.energyUnit === 'eui' ? 'kBtu' : state.energyUnit);
-  if (state.energyUnit === 'eui') return sc.buildingArea > 0 ? value / sc.buildingArea : 0;
-  return value;
+  if (!catData) return 0;
+  if (state.energyUnit === 'eui') {
+    return sc.buildingArea > 0 ? (catData.totalKbtu || 0) / sc.buildingArea : 0;
+  }
+  if (state.energyUnit === 'eui-elec') {
+    return sc.buildingArea > 0 ? (catData.elecKbtu || 0) / sc.buildingArea : 0;
+  }
+  if (state.energyUnit === 'eui-gas') {
+    return sc.buildingArea > 0 ? (catData.gasKbtu || 0) / sc.buildingArea : 0;
+  }
+  if (state.energyUnit === 'kWh') return catData.elecKwh || 0;
+  if (state.energyUnit === 'therm') return catData.gasTherm || 0;
+  return catData.totalKbtu || 0;
 }
 
 function getScenarioEnergyValue(sc, unit = state.energyUnit) {
-  const value = unit === 'kWh' ? sc.summary.totalElectricity_kBtu
-    : unit === 'therm' ? sc.summary.totalNaturalGas_kBtu : sc.summary.grandTotal_kBtu;
-  if (unit === 'eui') return sc.buildingArea > 0 ? value / sc.buildingArea : 0;
-  if (unit === 'kWh') return value / CONVERSIONS.KWH_TO_KBTU;
-  if (unit === 'therm') return value / CONVERSIONS.THERM_TO_KBTU;
-  return value;
-}
-
-function getDisplayUnitLabel() {
-  return state.energyUnit === 'eui' ? 'kBtu/ft2 (Total Combined)' : state.energyUnit;
+  if (unit === 'eui') return sc.buildingArea > 0 ? sc.summary.grandTotal_kBtu / sc.buildingArea : 0;
+  if (unit === 'eui-elec') return sc.buildingArea > 0 ? sc.summary.totalElectricity_kBtu / sc.buildingArea : 0;
+  if (unit === 'eui-gas') return sc.buildingArea > 0 ? sc.summary.totalNaturalGas_kBtu / sc.buildingArea : 0;
+  if (unit === 'kWh') return sc.summary.totalElectricity_kWh;
+  if (unit === 'therm') return sc.summary.totalNaturalGas_therm;
+  return sc.summary.grandTotal_kBtu;
 }
 
 // =============================================================================
-// Tab Switching & Export Section Visibility
+// Export Section Visibility
+// - Only Results CSV: hide both export sections
+// - Only Run Folder: show "Export to CSV Log"
+// - Both CSV and Run Folder: show "Append Scenarios to CSV Log"
 // =============================================================================
 
 function updateExportSectionsVisibility() {
-  const hasScenarios = state.scenarios && state.scenarios.length > 0;
+  const hasCsv = !!state.loadedCsv;
+  const hasFolder = !!(state.loadedFolder && state.rawScenarios && state.rawScenarios.length > 0);
 
-  if (!hasScenarios) {
-    if (elements.csvExportSection) elements.csvExportSection.classList.add('hidden');
-    if (elements.csvAppendSection) elements.csvAppendSection.classList.add('hidden');
-    return;
+  if (elements.csvExportSection) elements.csvExportSection.classList.add('hidden');
+  if (elements.csvAppendSection) elements.csvAppendSection.classList.add('hidden');
+
+  if (hasCsv && hasFolder) {
+    state.activeIngestionMethod = 3;
+    if (elements.csvAppendSection) {
+      elements.csvAppendSection.classList.remove('hidden');
+      if (elements.appendTargetCsvName) {
+        elements.appendTargetCsvName.textContent = state.loadedCsv.name || 'Results.csv';
+      }
+      renderAppendChecklist();
+    }
+  } else if (hasFolder) {
+    state.activeIngestionMethod = 2;
+    if (elements.csvExportSection) {
+      elements.csvExportSection.classList.remove('hidden');
+    }
+  } else if (hasCsv) {
+    state.activeIngestionMethod = 1;
   }
-
-  if (state.activeIngestionMethod === 1) {
-    // Method 1: No Export CSV section shown
-    if (elements.csvExportSection) elements.csvExportSection.classList.add('hidden');
-    if (elements.csvAppendSection) elements.csvAppendSection.classList.add('hidden');
-  } else if (state.activeIngestionMethod === 2) {
-    // Method 2: Show Export to CSV Log with editable filename & location
-    if (elements.csvExportSection) elements.csvExportSection.classList.remove('hidden');
-    if (elements.csvAppendSection) elements.csvAppendSection.classList.add('hidden');
-  } else if (state.activeIngestionMethod === 3) {
-    // Method 3: Show Append Scenarios to CSV Log (checklist + append download)
-    if (elements.csvExportSection) elements.csvExportSection.classList.add('hidden');
-    if (elements.csvAppendSection) elements.csvAppendSection.classList.remove('hidden');
-  }
-}
-
-function setupTabs() {
-  const tabs = [
-    { id: 1, btn: elements.tabBtn1, pane: elements.tabPane1 },
-    { id: 2, btn: elements.tabBtn2, pane: elements.tabPane2 },
-    { id: 3, btn: elements.tabBtn3, pane: elements.tabPane3 },
-  ];
-
-  tabs.forEach(t => {
-    if (!t.btn || !t.pane) return;
-    t.btn.addEventListener('click', () => {
-      tabs.forEach(other => {
-        if (other.btn) other.btn.classList.remove('active');
-        if (other.pane) other.pane.classList.add('hidden');
-      });
-      t.btn.classList.add('active');
-      t.pane.classList.remove('hidden');
-      state.activeIngestionMethod = t.id;
-      updateExportSectionsVisibility();
-    });
-  });
 }
 
 // =============================================================================
-// CSV Parsing: Standard 68-Column Results.csv (with legacy 67-column compatibility)
+// CSV Parsing: Dynamic Header & Multi-scenario Results.csv Reader
 // =============================================================================
 
 function parseCsvToRows(text) {
@@ -904,62 +1043,125 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
     return { success: false, error: 'CSV file must have header rows and at least 1 data row.' };
   }
 
-  // Detect 2 vs 3 header rows
-  // In 3-header format: row 0 has dashboard categories, row 1 has 'Run ID', row 2 has units '[kWh]', data starts row 3
-  // In 2-header format: row 0 has 'Run ID', row 1 has units '[kWh]', data starts row 2
-  const isThreeHeader = rows.length > 3 && (
-    (rows[1] && rows[1][0] && rows[1][0].trim().toLowerCase() === 'run id') ||
-    (rows[0] && rows[0][3] && rows[0][3].trim().length > 0 && !rows[0][0])
-  );
-  const dataStartIdx = isThreeHeader ? 3 : 2;
-  const hasSingleAreaColumn = isThreeHeader && /scenario/i.test(rows[1][2] || '') && /building area/i.test(rows[1][3] || '') && !/net conditioned|total building/i.test(rows[1][3] || '');
-  const hasLegacyAreaColumns = isThreeHeader && /scenario/i.test(rows[1][2] || '') && /total building area/i.test(rows[1][3] || '');
-  const scenarioColumn = 2;
-  const energyColumnStart = hasSingleAreaColumn ? 4 : hasLegacyAreaColumns ? 5 : 3;
+  // Detect 3-header vs 2-header format
+  let headerRow0 = null;
+  let headerRow1 = null;
+  let headerRow2 = null;
+  let dataStartIdx = 3;
+
+  if (rows[1] && rows[1][0] && rows[1][0].trim().toLowerCase() === 'run id') {
+    // 3-header format (Row 0: User Cats, Row 1: Raw Cats, Row 2: Units)
+    headerRow0 = rows[0];
+    headerRow1 = rows[1];
+    headerRow2 = rows[2];
+    dataStartIdx = 3;
+  } else if (rows[0] && rows[0][0] && rows[0][0].trim().toLowerCase() === 'run id') {
+    // 2-header format
+    headerRow0 = [];
+    headerRow1 = rows[0];
+    headerRow2 = rows[1];
+    dataStartIdx = 2;
+  } else {
+    const row2Text = (rows[2] || []).join(' ');
+    if (row2Text.includes('[kWh]') || row2Text.includes('[W]') || row2Text.includes('[therm]')) {
+      headerRow0 = rows[0];
+      headerRow1 = rows[1];
+      headerRow2 = rows[2];
+      dataStartIdx = 3;
+    } else {
+      headerRow0 = [];
+      headerRow1 = rows[0];
+      headerRow2 = rows[1];
+      dataStartIdx = 2;
+    }
+  }
+
+  // Detect column locations
+  let runIdCol = 0;
+  let revCol = 1;
+  let scenarioCol = 2;
+  let areaCol = -1;
+
+  for (let c = 0; c < Math.min(6, headerRow1.length); c++) {
+    const text1 = (headerRow1[c] || '').toLowerCase();
+    const text0 = (headerRow0 && headerRow0[c] ? headerRow0[c] : '').toLowerCase();
+    if (text1.includes('scenario')) scenarioCol = c;
+    if (text1.includes('building area') || text0.includes('building area')) areaCol = c;
+  }
+
+  const energyStartCol = areaCol >= 0 ? areaCol + 1 : (scenarioCol + 1);
+
+  // Discover all energy column pairs from headerRow2
+  const colDefs = [];
+  const mappings = {};
+
+  for (let c = energyStartCol; c < headerRow2.length; c++) {
+    const unit = (headerRow2[c] || '').trim();
+    if (unit === '[kWh]' || unit === '[therm]') {
+      const isElec = unit === '[kWh]';
+      const demandCol = (c + 1 < headerRow2.length) ? c + 1 : -1;
+      const rawCat = (headerRow1[c] || '').trim() || (headerRow1[c - 1] || '').trim();
+      const userCat = (headerRow0 && headerRow0[c] ? headerRow0[c].trim() : '') ||
+        (headerRow0 && headerRow0[c - 1] ? headerRow0[c - 1].trim() : '') ||
+        getDefaultCategoryMapping(rawCat, isElec ? 'elec' : 'gas');
+
+      colDefs.push({
+        energyCol: c,
+        demandCol,
+        isElec,
+        fuel: isElec ? 'elec' : 'gas',
+        rawCat,
+        userCat
+      });
+
+      const key = `${rawCat}___${isElec ? 'elec' : 'gas'}`;
+      mappings[key] = {
+        rawCategory: rawCat,
+        fuel: isElec ? 'elec' : 'gas',
+        userCategory: userCat,
+        locked: true,
+        source: 'csv'
+      };
+    }
+  }
+
+  // Fallback to legacy fixed columns if no units recognised
+  if (colDefs.length === 0) {
+    CSV_ELECS.forEach((catRaw, idx) => {
+      const kwhCol = energyStartCol + (idx * 2);
+      const wCol = energyStartCol + 1 + (idx * 2);
+      colDefs.push({ energyCol: kwhCol, demandCol: wCol, isElec: true, fuel: 'elec', rawCat: catRaw, userCat: getDefaultCategoryMapping(catRaw, 'elec') });
+      mappings[`${catRaw}___elec`] = { rawCategory: catRaw, fuel: 'elec', userCategory: getDefaultCategoryMapping(catRaw, 'elec'), locked: true, source: 'csv' };
+    });
+    CSV_GASES.forEach((catRaw, idx) => {
+      const thermCol = energyStartCol + 52 + (idx * 2);
+      const btuhCol = energyStartCol + 53 + (idx * 2);
+      colDefs.push({ energyCol: thermCol, demandCol: btuhCol, isElec: false, fuel: 'gas', rawCat: catRaw, userCat: getDefaultCategoryMapping(catRaw, 'gas') });
+      mappings[`${catRaw}___gas`] = { rawCategory: catRaw, fuel: 'gas', userCategory: getDefaultCategoryMapping(catRaw, 'gas'), locked: true, source: 'csv' };
+    });
+  }
 
   const scenarios = [];
 
   for (let i = dataStartIdx; i < rows.length; i++) {
     const row = rows[i];
-    if (row.length <= scenarioColumn || !row[scenarioColumn]) continue;
+    if (row.length <= scenarioCol || !row[scenarioCol]) continue;
 
-    const runId = (row[0] || 'Run_01').trim();
-    const rev = (row[1] || 'Rev.0').trim();
-    const rawScenario = row[scenarioColumn].trim();
-    const totalBuildingArea = hasSingleAreaColumn ? parseNumber(row[3]) : hasLegacyAreaColumns ? parseNumber(row[3]) : 0;
-    const netConditionedBuildingArea = hasSingleAreaColumn ? 0 : hasLegacyAreaColumns ? parseNumber(row[4]) : 0;
-    const scenarioName = formatCompositeName
-      ? `${runId}_${rev}_${rawScenario}`
-      : rawScenario;
+    const runId = (row[runIdCol] || 'Run_01').trim();
+    const rev = (row[revCol] || 'Rev.0').trim();
+    const rawScenario = row[scenarioCol].trim();
+    const buildingArea = areaCol >= 0 && areaCol < row.length ? parseNumber(row[areaCol]) : 0;
+    const scenarioName = formatCompositeName ? `${runId}_${rev}_${rawScenario}` : rawScenario;
 
     const rawCategoryMap = {};
 
-    CSV_ELECS.forEach((catRaw, idx) => {
-      const kwhCol = energyColumnStart + (idx * 2);
-      const wCol   = energyColumnStart + 1 + (idx * 2);
-      const kwh = kwhCol < row.length ? parseNumber(row[kwhCol]) : 0;
-      const w   = wCol < row.length ? parseNumber(row[wCol]) : 0;
-      rawCategoryMap[catRaw] = {
-        rawCategory: catRaw,
-        isTotal: false,
-        elecKwh: kwh,
-        elecDemW: w,
-        gasTherm: 0,
-        gasDemBtuh: 0,
-        elecKbtu: kwh * CONVERSIONS.KWH_TO_KBTU,
-        gasKbtu: 0,
-        totalKbtu: kwh * CONVERSIONS.KWH_TO_KBTU
-      };
-    });
+    colDefs.forEach(def => {
+      const energyVal = def.energyCol < row.length ? parseNumber(row[def.energyCol]) : 0;
+      const demandVal = def.demandCol >= 0 && def.demandCol < row.length ? parseNumber(row[def.demandCol]) : 0;
 
-    CSV_GASES.forEach((catRaw, idx) => {
-      const thermCol = energyColumnStart + 52 + (idx * 2);
-      const btuhCol  = energyColumnStart + 53 + (idx * 2);
-      const therm = thermCol < row.length ? parseNumber(row[thermCol]) : 0;
-      const btuh  = btuhCol < row.length ? parseNumber(row[btuhCol]) : 0;
-      if (!rawCategoryMap[catRaw]) {
-        rawCategoryMap[catRaw] = {
-          rawCategory: catRaw,
+      if (!rawCategoryMap[def.rawCat]) {
+        rawCategoryMap[def.rawCat] = {
+          rawCategory: def.rawCat,
           isTotal: false,
           elecKwh: 0,
           elecDemW: 0,
@@ -970,14 +1172,20 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
           totalKbtu: 0
         };
       }
-      rawCategoryMap[catRaw].gasTherm = therm;
-      rawCategoryMap[catRaw].gasDemBtuh = btuh;
-      rawCategoryMap[catRaw].gasKbtu = therm * CONVERSIONS.THERM_TO_KBTU;
-      rawCategoryMap[catRaw].totalKbtu = (rawCategoryMap[catRaw].elecKbtu || 0) + rawCategoryMap[catRaw].gasKbtu;
+
+      if (def.isElec) {
+        rawCategoryMap[def.rawCat].elecKwh = energyVal;
+        rawCategoryMap[def.rawCat].elecDemW = demandVal;
+        rawCategoryMap[def.rawCat].elecKbtu = energyVal * CONVERSIONS.KWH_TO_KBTU;
+      } else {
+        rawCategoryMap[def.rawCat].gasTherm = energyVal;
+        rawCategoryMap[def.rawCat].gasDemBtuh = demandVal;
+        rawCategoryMap[def.rawCat].gasKbtu = energyVal * CONVERSIONS.THERM_TO_KBTU;
+      }
+      rawCategoryMap[def.rawCat].totalKbtu = (rawCategoryMap[def.rawCat].elecKbtu || 0) + (rawCategoryMap[def.rawCat].gasKbtu || 0);
     });
 
-    // Build the aggregated 11 dashboard categories from rawCategoryMap
-    const categoryMap = buildDashboardCategoryMap(rawCategoryMap);
+    const categoryMap = buildDashboardCategoryMap(rawCategoryMap, mappings);
 
     let totalElecKwh = 0;
     let totalGasTherm = 0;
@@ -987,9 +1195,8 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
     });
 
     const totalElecKbtu = totalElecKwh * CONVERSIONS.KWH_TO_KBTU;
-    const totalGasKbtu  = totalGasTherm * CONVERSIONS.THERM_TO_KBTU;
+    const totalGasKbtu = totalGasTherm * CONVERSIONS.THERM_TO_KBTU;
     const grandTotalKbtu = totalElecKbtu + totalGasKbtu;
-
     const isAvg = rawScenario.toLowerCase().includes('baseline avg') || scenarioName.toLowerCase().includes('baseline avg');
 
     const scObj = {
@@ -1000,9 +1207,9 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
       revision: rev,
       isCalculatedAverage: isAvg,
       fileBaseName: `${scenarioName}.csv`,
-      totalBuildingArea,
-      netConditionedBuildingArea,
-      buildingArea: totalBuildingArea,
+      totalBuildingArea: buildingArea,
+      netConditionedBuildingArea: 0,
+      buildingArea,
       categoryMap,
       rawCategoryMap,
       summary: {
@@ -1018,37 +1225,198 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
     scenarios.push(scObj);
   }
 
-  return { success: true, scenarios, rows };
+  return { success: true, scenarios, rows, mappings, colDefs, isThreeHeader: dataStartIdx === 3 };
 }
 
 // =============================================================================
-// Helper: Format a Scenario as a 68-Column CSV Row
+// Category Mapping Synchronization & UI
 // =============================================================================
 
-function formatScenarioCsvRow(sc, runId, revision, rawScenarioName = '') {
-  const cmap = sc.rawCategoryMap || sc.categoryMap || {};
-  const scName = rawScenarioName || sc.rawScenarioName || sc.scenarioName;
-  const row = [runId, revision, scName, formatNumRaw(sc.buildingArea, 2)];
+function syncCategoryMappings(scenarios, isCsvSource = false) {
+  scenarios.forEach(sc => {
+    const rawMap = sc.rawCategoryMap || {};
+    Object.keys(rawMap).forEach(rawCat => {
+      const r = rawMap[rawCat];
+      if (!r || r.isTotal) return;
 
-  // 26 electricity columns (kWh + W per category)
-  CSV_ELECS.forEach(catRaw => {
-    const r = cmap[catRaw];
-    row.push(r ? formatNumRaw(r.elecKwh, 2) : '0.00');
-    row.push(r ? formatNumRaw(r.elecDemW, 2) : '0.00');
+      if (r.elecKwh > 0 || r.elecDemW > 0) {
+        const key = `${rawCat}___elec`;
+        if (!state.categoryMapping[key]) {
+          state.categoryMapping[key] = {
+            rawCategory: rawCat,
+            fuel: 'elec',
+            userCategory: getDefaultCategoryMapping(rawCat, 'elec'),
+            locked: isCsvSource,
+            source: isCsvSource ? 'csv' : 'folder'
+          };
+        }
+      }
+
+      if (r.gasTherm > 0 || r.gasDemBtuh > 0) {
+        const key = `${rawCat}___gas`;
+        if (!state.categoryMapping[key]) {
+          state.categoryMapping[key] = {
+            rawCategory: rawCat,
+            fuel: 'gas',
+            userCategory: getDefaultCategoryMapping(rawCat, 'gas'),
+            locked: isCsvSource,
+            source: isCsvSource ? 'csv' : 'folder'
+          };
+        }
+      }
+    });
   });
 
-  // 6 natural gas columns (therm + Btu/h per category)
-  CSV_GASES.forEach(catRaw => {
-    const r = cmap[catRaw];
-    row.push(r ? formatNumRaw(r.gasTherm, 2) : '0.00');
-    row.push(r ? formatNumRaw(r.gasDemBtuh, 2) : '0.00');
+  recomputeAllScenarioCategories();
+  renderCategoryMappingUI();
+  renderCategoryFilterChips();
+}
+
+function recomputeAllScenarioCategories() {
+  state.scenarios.forEach(sc => {
+    sc.categoryMap = buildDashboardCategoryMap(sc.rawCategoryMap, state.categoryMapping);
+
+    let totalElecKwh = 0;
+    let totalGasTherm = 0;
+    Object.values(sc.categoryMap).forEach(c => {
+      totalElecKwh += c.elecKwh;
+      totalGasTherm += c.gasTherm;
+    });
+
+    const totalElecKbtu = totalElecKwh * CONVERSIONS.KWH_TO_KBTU;
+    const totalGasKbtu = totalGasTherm * CONVERSIONS.THERM_TO_KBTU;
+    const grandTotalKbtu = totalElecKbtu + totalGasKbtu;
+
+    sc.summary = {
+      totalElectricity_kWh: totalElecKwh,
+      totalNaturalGas_therm: totalGasTherm,
+      totalElectricity_kBtu: totalElecKbtu,
+      totalNaturalGas_kBtu: totalGasKbtu,
+      grandTotal_kBtu: grandTotalKbtu,
+      electricitySharePercent: grandTotalKbtu > 0 ? (totalElecKbtu / grandTotalKbtu) * 100 : 0,
+      naturalGasSharePercent: grandTotalKbtu > 0 ? (totalGasKbtu / grandTotalKbtu) * 100 : 0,
+    };
   });
 
-  return row;
+  updateDashboard();
+}
+
+function renderCategoryMappingUI() {
+  const container = document.getElementById('category-mapping-container');
+  if (!container) return;
+
+  const keys = Object.keys(state.categoryMapping);
+  if (keys.length === 0) {
+    container.innerHTML = '<div class="empty-hint" style="padding:16px;text-align:center;font-size:0.82rem;color:var(--text-secondary);">No non-zero categories detected yet. Load a Results CSV or Model Run Folder.</div>';
+    return;
+  }
+
+  // Sort keys: electricity first, then natural gas, then alphabetical by rawCategory
+  keys.sort((a, b) => {
+    const ruleA = state.categoryMapping[a];
+    const ruleB = state.categoryMapping[b];
+    if (ruleA.fuel !== ruleB.fuel) return ruleA.fuel === 'elec' ? -1 : 1;
+    return ruleA.rawCategory.localeCompare(ruleB.rawCategory);
+  });
+
+  let html = '';
+  keys.forEach(k => {
+    const rule = state.categoryMapping[k];
+    const isElec = rule.fuel === 'elec';
+    const fuelBadge = isElec
+      ? '<span class="fuel-badge elec">⚡ Electricity</span>'
+      : '<span class="fuel-badge gas">🔥 Natural Gas</span>';
+
+    let targetControl = '';
+    if (rule.locked) {
+      targetControl = `<span class="mapping-locked-badge" title="Defined in Results CSV"><span class="lock-icon">🔒</span> ${rule.userCategory}</span>`;
+    } else {
+      const optionsHtml = STANDARD_MAPPED_CATEGORIES.map(cat => {
+        const selected = cat.toLowerCase() === (rule.userCategory || '').toLowerCase() ? 'selected' : '';
+        return `<option value="${cat}" ${selected}>${cat}</option>`;
+      }).join('');
+
+      const isCustom = !STANDARD_MAPPED_CATEGORIES.some(cat => cat.toLowerCase() === (rule.userCategory || '').toLowerCase());
+      const customOption = isCustom ? `<option value="${rule.userCategory}" selected>${rule.userCategory} (Custom)</option>` : '';
+
+      targetControl = `
+        <select class="mapping-select" data-key="${k}">
+          ${optionsHtml}
+          ${customOption}
+        </select>
+      `;
+    }
+
+    html += `
+      <div class="mapping-row" data-key="${k}">
+        <div class="mapping-raw-group">
+          ${fuelBadge}
+          <span class="mapping-raw-name" title="${rule.rawCategory}">${rule.rawCategory}</span>
+        </div>
+        <div class="mapping-target-group">
+          ${targetControl}
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+
+  container.querySelectorAll('.mapping-select').forEach(sel => {
+    sel.addEventListener('change', e => {
+      const key = e.target.getAttribute('data-key');
+      const newCat = e.target.value;
+      if (state.categoryMapping[key]) {
+        state.categoryMapping[key].userCategory = newCat;
+        recomputeAllScenarioCategories();
+      }
+    });
+  });
+}
+
+function renderCategoryFilterChips() {
+  const container = document.getElementById('category-filter-chips');
+  if (!container) return;
+
+  const catSet = new Set();
+  state.scenarios.forEach(sc => {
+    if (sc.categoryMap) {
+      Object.keys(sc.categoryMap).forEach(cat => catSet.add(cat));
+    }
+  });
+
+  const allCats = Array.from(catSet).sort();
+  if (allCats.length === 0) {
+    container.innerHTML = '<span class="text-muted" style="font-size:0.76rem;">No categories available</span>';
+    return;
+  }
+
+  if (!state.visibleCategories || state.visibleCategories.size === 0) {
+    state.visibleCategories = new Set(allCats);
+  }
+
+  container.innerHTML = allCats.map(cat => {
+    const isActive = state.visibleCategories.has(cat);
+    return `<button type="button" class="cat-chip ${isActive ? 'active' : ''}" data-cat="${cat}">${cat}</button>`;
+  }).join('');
+
+  container.querySelectorAll('.cat-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const cat = chip.getAttribute('data-cat');
+      if (state.visibleCategories.has(cat)) {
+        state.visibleCategories.delete(cat);
+        chip.classList.remove('active');
+      } else {
+        state.visibleCategories.add(cat);
+        chip.classList.add('active');
+      }
+      updateDashboard();
+    });
+  });
 }
 
 // =============================================================================
-// Method 1: Load Results CSV
+// File Selection Handlers (Section 1: 4 Selections in 1 Row)
 // =============================================================================
 
 async function handleCsvFile(file) {
@@ -1062,20 +1430,38 @@ async function handleCsvFile(file) {
 }
 
 function loadCsvContent(text, filename) {
-  state.activeIngestionMethod = 1;
-  const result = parseComplianceCSV(text, filename, true); // formatCompositeName = true for Method 1
+  const result = parseComplianceCSV(text, filename, true);
   if (!result.success || result.scenarios.length === 0) {
     showToast('CSV Parsing Failed', result.error || 'Could not parse scenarios from CSV.', '⚠️');
     return;
   }
 
+  state.loadedCsv = {
+    file: null,
+    name: filename,
+    text,
+    scenarios: result.scenarios,
+    rows: result.rows,
+    mappings: result.mappings,
+    colDefs: result.colDefs,
+    isThreeHeader: result.isThreeHeader
+  };
+
+  // Lock mappings defined in CSV
+  Object.keys(result.mappings).forEach(k => {
+    state.categoryMapping[k] = { ...result.mappings[k], locked: true };
+  });
+
   state.loadedCsvRows = result.rows;
   state.baseCsvFilename = filename;
-  state.isAppendedData = false;
   state.selectedFolderName = filename.replace(/\s*-\s*Results\.csv$/i, '').replace(/\.csv$/i, '');
-  updateCsvFilenamePreview();
 
-  // Populate Run ID & Rev in CSV export panel from first row
+  if (elements.slotCsv) elements.slotCsv.classList.add('active-loaded');
+  if (elements.csvStatusLabel) {
+    elements.csvStatusLabel.innerHTML = `<strong>${filename}</strong> (${result.scenarios.length} sc)`;
+  }
+  if (elements.clearCsvBtn) elements.clearCsvBtn.classList.remove('hidden');
+
   if (result.scenarios[0].runId && elements.csvRunId) {
     elements.csvRunId.value = result.scenarios[0].runId;
   }
@@ -1083,27 +1469,104 @@ function loadCsvContent(text, filename) {
     elements.csvRevision.value = result.scenarios[0].revision;
   }
 
-  loadParsedScenarios(result.scenarios);
-
-  if (elements.csvStatusBadge) {
-    elements.csvStatusBadge.className = 'source-status-info';
-    elements.csvStatusBadge.innerHTML = `<span>✅ <strong>${filename}</strong>: Loaded ${result.scenarios.length} scenarios (${result.scenarios.map(s => s.scenarioName).join(', ')}).</span>`;
-    elements.csvStatusBadge.classList.remove('hidden');
+  if (state.loadedFolder && state.rawScenarios && state.rawScenarios.length > 0) {
+    // Both loaded -> Mode 3 (Append)
+    state.activeIngestionMethod = 3;
+    loadParsedScenarios([...result.scenarios, ...state.rawScenarios]);
+    syncCategoryMappings(state.scenarios, false);
+  } else {
+    // Only CSV -> Mode 1
+    state.activeIngestionMethod = 1;
+    loadParsedScenarios(result.scenarios);
+    syncCategoryMappings(result.scenarios, true);
   }
 
   updateExportSectionsVisibility();
   showToast('CSV Loaded', `Loaded ${result.scenarios.length} scenarios from ${filename}!`, '✅');
 }
 
+function clearCsvSelection() {
+  state.loadedCsv = null;
+  state.loadedCsvRows = [];
+  state.baseCsvFilename = '';
+
+  if (elements.slotCsv) elements.slotCsv.classList.remove('active-loaded');
+  if (elements.csvStatusLabel) elements.csvStatusLabel.textContent = 'Drop CSV or choose';
+  if (elements.clearCsvBtn) elements.clearCsvBtn.classList.add('hidden');
+  if (elements.browserCsvInput) elements.browserCsvInput.value = '';
+
+  if (state.loadedFolder && state.loadedFolder.rawScenarios && state.loadedFolder.rawScenarios.length > 0) {
+    state.activeIngestionMethod = 2;
+    state.categoryMapping = {};
+    loadParsedScenarios(state.loadedFolder.rawScenarios);
+    syncCategoryMappings(state.scenarios, false);
+  } else {
+    state.scenarios = [];
+    state.rawScenarios = [];
+    state.categoryMapping = {};
+    if (elements.scenariosContainer) elements.scenariosContainer.classList.add('hidden');
+    if (elements.dashboardArea) elements.dashboardArea.classList.add('hidden');
+  }
+
+  updateExportSectionsVisibility();
+  showToast('CSV Cleared', 'Removed loaded Results CSV', 'ℹ️');
+}
+
 async function loadSampleCsv() {
-  showToast('Loading Sample CSV...', 'Fetching 2394-LEED MDL- Results.csv...', '⏳');
+  showToast('Loading Sample CSV...', 'Fetching example_project_folder - Results.csv...', '⏳');
   try {
-    const res = await fetch('2394-LEED MDL- Results.csv');
+    let res = await fetch('example_project_folder - Results.csv');
+    let filename = 'example_project_folder - Results.csv';
+    if (!res.ok) {
+      res = await fetch('2394-LEED MDL- Results.csv');
+      filename = '2394-LEED MDL- Results.csv';
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const text = await res.text();
-    loadCsvContent(text, '2394-LEED MDL- Results.csv');
+    loadCsvContent(text, filename);
   } catch (err) {
     showToast('Notice', 'Could not load sample CSV: ' + err.message, '⚠️');
+  }
+}
+
+async function handleWorkbookUpload(file) {
+  if (!file) return;
+  state.loadedWorkbook = { file, name: file.name };
+  if (elements.slotCbeccWb) elements.slotCbeccWb.classList.add('active-loaded');
+  if (elements.wbStatusLabel) {
+    elements.wbStatusLabel.innerHTML = `<strong>${file.name}</strong>`;
+  }
+  if (elements.clearWbBtn) elements.clearWbBtn.classList.remove('hidden');
+
+  if (window.QCModule && typeof window.QCModule.handleWorkbookFile === 'function') {
+    window.QCModule.handleWorkbookFile(file);
+  }
+  if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setWorkbook === 'function') {
+    window.CBECC_SHARED.setWorkbook(file, 'compliance');
+  }
+
+  showToast('Workbook Loaded', `Loaded ${file.name} for QC & comparison!`, '📗');
+}
+
+function clearWorkbookSelection() {
+  state.loadedWorkbook = null;
+  if (elements.slotCbeccWb) elements.slotCbeccWb.classList.remove('active-loaded');
+  if (elements.wbStatusLabel) elements.wbStatusLabel.textContent = 'QC & Comparison (.xlsm)';
+  if (elements.clearWbBtn) elements.clearWbBtn.classList.add('hidden');
+  if (elements.browserWbInput) elements.browserWbInput.value = '';
+  showToast('Workbook Cleared', 'Removed loaded CBECC Model Workbook', 'ℹ️');
+}
+
+async function loadSampleWorkbook() {
+  showToast('Loading Workbook...', 'Fetching CBECC Model Workbook - example2.xlsm...', '⏳');
+  try {
+    const res = await fetch('CBECC Model Workbook - example2.xlsm');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const file = new File([blob], 'CBECC Model Workbook - example2.xlsm', { type: 'application/vnd.ms-excel.sheet.macroEnabled.12' });
+    handleWorkbookUpload(file);
+  } catch (err) {
+    showToast('Notice', 'Could not load sample workbook: ' + err.message, '⚠️');
   }
 }
 
@@ -1157,173 +1620,9 @@ async function handleFileList(files) {
       // Filter out zb and zp scenarios
       const scLower = scenarioName.toLowerCase();
       if (scLower.startsWith('zb') || scLower.startsWith('zp') ||
-          scLower.includes('- zb') || scLower.includes('- zp')) {
+        scLower.includes('- zb') || scLower.includes('- zp')) {
         continue;
       }
-
-      const parsed = extractComplianceFromHTML(text, scenarioName);
-      if (parsed) {
-        parsed.fileBaseName   = file.name;
-        parsed.scenarioName   = scenarioName;
-        parsed.rawScenarioName = scenarioName;
-        parsedResults.push(parsed);
-      }
-    } catch (e) {
-      console.error('Error parsing file:', file.name, e);
-    }
-  }
-
-  if (parsedResults.length > 0) {
-    state.isAppendedData = false;
-    loadParsedScenarios(parsedResults);
-
-    // Forward selected model folder to Model QC and Reports tabs
-    if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
-      window.CBECC_SHARED.setFolder('', state.selectedFolderName, 'Compliance Tab', files);
-    }
-    if (window.QCModule && typeof window.QCModule.handleBrowserFolderUpload === 'function') {
-      window.QCModule.handleBrowserFolderUpload(files);
-    }
-    if (elements.folderStatusBadge) {
-      elements.folderStatusBadge.className = 'source-status-info';
-      elements.folderStatusBadge.innerHTML = `<span>✅ Extracted ${parsedResults.length} scenarios (${parsedResults.map(s => s.scenarioName).join(', ')}) from HTM files.</span>`;
-      elements.folderStatusBadge.classList.remove('hidden');
-    }
-    updateExportSectionsVisibility();
-    showToast('Success', `Successfully parsed ${parsedResults.length} scenarios!`, '✅');
-  } else {
-    showToast('Extraction Failed', 'No EAp2-4/5 compliance tables found in selected files', '⚠️');
-  }
-}
-
-async function loadExampleDataInBrowser() {
-  showToast('Loading Demo...', 'Fetching sample CBECC simulation files...', '⏳');
-  const demoFiles = [
-    { scenario: 'ap',  path: 'example_project_folder/ap/1574_GLBH_S901G_CBECC2025 - ap.htm',   name: '1574_GLBH_S901G_CBECC2025 - ap.htm' },
-    { scenario: 'ab1', path: 'example_project_folder/ab1/1574_GLBH_S901G_CBECC2025 - ab1.htm', name: '1574_GLBH_S901G_CBECC2025 - ab1.htm' },
-    { scenario: 'ab2', path: 'example_project_folder/ab2/1574_GLBH_S901G_CBECC2025 - ab2.htm', name: '1574_GLBH_S901G_CBECC2025 - ab2.htm' },
-    { scenario: 'ab3', path: 'example_project_folder/ab3/1574_GLBH_S901G_CBECC2025 - ab3.htm', name: '1574_GLBH_S901G_CBECC2025 - ab3.htm' },
-    { scenario: 'ab4', path: 'example_project_folder/ab4/1574_GLBH_S901G_CBECC2025 - ab4.htm', name: '1574_GLBH_S901G_CBECC2025 - ab4.htm' },
-  ];
-
-  try {
-    const parsedResults = [];
-    for (const item of demoFiles) {
-      const res = await fetch(item.path);
-      if (!res.ok) throw new Error(`HTTP ${res.status} loading ${item.path}`);
-      const text = await res.text();
-      const parsed = extractComplianceFromHTML(text, item.scenario);
-      if (parsed) {
-        parsed.fileBaseName = item.name;
-        parsed.scenarioName = item.scenario;
-        parsed.rawScenarioName = item.scenario;
-        parsedResults.push(parsed);
-      }
-    }
-
-    if (parsedResults.length > 0) {
-      state.activeIngestionMethod = 2;
-      state.isAppendedData = false;
-      state.selectedFolderName = '1574_GLBH_S901G_CBECC2025';
-      updateCsvFilenamePreview();
-
-      if (elements.csvExportFilename) {
-        elements.csvExportFilename.value = getCleanCsvFilename('1574_GLBH_S901G_CBECC2025');
-      }
-      if (elements.csvExportLocation) {
-        elements.csvExportLocation.value = '..\\';
-      }
-
-      loadParsedScenarios(parsedResults);
-      if (elements.folderStatusBadge) {
-        elements.folderStatusBadge.className = 'source-status-info';
-        elements.folderStatusBadge.innerHTML = `<span>✅ Loaded 5 sample scenarios (ap, ab1–ab4) from example folder.</span>`;
-        elements.folderStatusBadge.classList.remove('hidden');
-      }
-      updateExportSectionsVisibility();
-      if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
-        window.CBECC_SHARED.setFolder('example_project_folder', '1574_GLBH_S901G_CBECC2025', 'Compliance Tab');
-      }
-      showToast('Demo Loaded', 'Loaded 5 example scenarios (ap, ab1–ab4)', '✅');
-    }
-  } catch (err) {
-    console.warn('Could not auto-fetch example files:', err);
-    showToast('Browser Mode', 'Drag & drop or select your CBECC output files or folder to begin', 'ℹ️');
-  }
-}
-
-// =============================================================================
-// Method 3: Append Model Run to CSV
-// =============================================================================
-
-async function handleAppendBaseCsv(file) {
-  if (!file) return;
-  try {
-    const text = await file.text();
-    setMethod3BaseCsv(text, file.name);
-  } catch (err) {
-    showToast('Error', 'Failed to read Base CSV: ' + err.message, '❌');
-  }
-}
-
-function setMethod3BaseCsv(text, filename) {
-  const result = parseComplianceCSV(text, filename, true);
-  if (!result.success || result.scenarios.length === 0) {
-    showToast('CSV Error', result.error || 'Invalid CSV format.', '⚠️');
-    return;
-  }
-  state.method3BaseCsvText = text;
-  state.method3BaseCsvRows = result.rows;
-  state.method3BaseFilename = filename;
-
-  if (elements.appendDropCsv) elements.appendDropCsv.classList.add('has-file');
-  if (elements.appendCsvStatus) {
-    elements.appendCsvStatus.innerHTML = `<strong>${filename}</strong> (${result.scenarios.length} scenarios)`;
-  }
-
-  // Suggest next Run ID if possible (e.g. Run_01 -> Run_02)
-  const lastRunId = result.scenarios[result.scenarios.length - 1].runId || 'Run_01';
-  const match = lastRunId.match(/(\d+)$/);
-  if (match && elements.appendRunId) {
-    const nextNum = String(parseInt(match[1], 10) + 1).padStart(match[1].length, '0');
-    elements.appendRunId.value = lastRunId.replace(/\d+$/, nextNum);
-  }
-
-  checkMethod3Ready();
-  showToast('Base CSV Ready', `Loaded base CSV: ${filename}`, '📄');
-}
-
-async function loadAppendSampleCsv() {
-  try {
-    const res = await fetch('2394-LEED MDL- Results.csv');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    setMethod3BaseCsv(text, '2394-LEED MDL- Results.csv');
-  } catch (err) {
-    showToast('Notice', 'Could not load sample CSV: ' + err.message, '⚠️');
-  }
-}
-
-async function handleAppendModelFolder(files) {
-  const htmFiles = Array.from(files).filter(f => f.name.endsWith('.htm') || f.name.endsWith('.html'));
-  if (htmFiles.length === 0) {
-    showToast('No HTM Files', 'Please select a folder containing .htm/.html files.', '⚠️');
-    return;
-  }
-
-  showToast('Extracting HTM...', `Reading ${htmFiles.length} files...`, '⏳');
-  const parsedResults = [];
-
-  for (const file of htmFiles) {
-    try {
-      const text = await file.text();
-      let scenarioName = file.name.replace(/\.(htm|html)$/i, '');
-      if (file.webkitRelativePath) {
-        const parts = file.webkitRelativePath.split('/');
-        if (parts.length > 2) scenarioName = parts[parts.length - 2];
-      }
-      const scLower = scenarioName.toLowerCase();
-      if (scLower.startsWith('zb') || scLower.startsWith('zp') || scLower.includes('- zb') || scLower.includes('- zp')) continue;
 
       const parsed = extractComplianceFromHTML(text, scenarioName);
       if (parsed) {
@@ -1338,27 +1637,73 @@ async function handleAppendModelFolder(files) {
   }
 
   if (parsedResults.length > 0) {
-    state.method3NewScenarios = parsedResults;
+    state.isAppendedData = false;
+    state.loadedFolder = {
+      files,
+      name: state.selectedFolderName,
+      rawScenarios: parsedResults
+    };
 
-    // Forward selected model folder to Model QC tab
+    if (elements.slotFolder) elements.slotFolder.classList.add('active-loaded');
+    if (elements.folderStatusLabel) {
+      elements.folderStatusLabel.innerHTML = `<strong>${state.selectedFolderName}</strong> (${parsedResults.length} sc)`;
+    }
+    if (elements.clearFolderBtn) elements.clearFolderBtn.classList.remove('hidden');
+
+    if (state.loadedCsv && state.loadedCsv.scenarios && state.loadedCsv.scenarios.length > 0) {
+      state.activeIngestionMethod = 3;
+      loadParsedScenarios([...state.loadedCsv.scenarios, ...parsedResults]);
+      syncCategoryMappings(state.scenarios, false);
+    } else {
+      state.activeIngestionMethod = 2;
+      loadParsedScenarios(parsedResults);
+      syncCategoryMappings(parsedResults, false);
+    }
+
+    // Forward selected model folder to Model QC and Reports tabs
+    if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
+      window.CBECC_SHARED.setFolder('', state.selectedFolderName, 'Compliance Tab', files);
+    }
     if (window.QCModule && typeof window.QCModule.handleBrowserFolderUpload === 'function') {
       window.QCModule.handleBrowserFolderUpload(files);
     }
-    if (elements.appendDropFolder) elements.appendDropFolder.classList.add('has-file');
-    if (elements.appendFolderStatus) {
-      elements.appendFolderStatus.innerHTML = `<strong>${parsedResults.length} HTM Scenarios</strong> (${parsedResults.map(s => s.scenarioName).join(', ')})`;
-    }
-    checkMethod3Ready();
-    showToast('Model Folder Ready', `Extracted ${parsedResults.length} scenarios from HTM files!`, '📁');
+
+    updateExportSectionsVisibility();
+    showToast('Success', `Successfully parsed ${parsedResults.length} scenarios!`, '✅');
   } else {
-    showToast('Extraction Failed', 'No EAp2-4/5 compliance tables found in files.', '⚠️');
+    showToast('Extraction Failed', 'No EAp2-4/5 compliance tables found in selected files', '⚠️');
   }
 }
 
-async function loadAppendSampleFolder() {
-  showToast('Loading Demo Folder...', 'Fetching sample CBECC simulation files...', '⏳');
+function clearFolderSelection() {
+  state.loadedFolder = null;
+  state.rawScenarios = [];
+
+  if (elements.slotFolder) elements.slotFolder.classList.remove('active-loaded');
+  if (elements.folderStatusLabel) elements.folderStatusLabel.textContent = 'Drop folder or choose';
+  if (elements.clearFolderBtn) elements.clearFolderBtn.classList.add('hidden');
+  if (elements.browserFolderInput) elements.browserFolderInput.value = '';
+  if (elements.browserFilesInput) elements.browserFilesInput.value = '';
+
+  if (state.loadedCsv && state.loadedCsv.scenarios && state.loadedCsv.scenarios.length > 0) {
+    state.activeIngestionMethod = 1;
+    loadParsedScenarios(state.loadedCsv.scenarios);
+    syncCategoryMappings(state.loadedCsv.scenarios, true);
+  } else {
+    state.scenarios = [];
+    state.categoryMapping = {};
+    if (elements.scenariosContainer) elements.scenariosContainer.classList.add('hidden');
+    if (elements.dashboardArea) elements.dashboardArea.classList.add('hidden');
+  }
+
+  updateExportSectionsVisibility();
+  showToast('Folder Cleared', 'Removed loaded model run folder', 'ℹ️');
+}
+
+async function loadExampleDataInBrowser() {
+  showToast('Loading Demo...', 'Fetching sample CBECC simulation files...', '⏳');
   const demoFiles = [
-    { scenario: 'ap',  path: 'example_project_folder/ap/1574_GLBH_S901G_CBECC2025 - ap.htm',   name: '1574_GLBH_S901G_CBECC2025 - ap.htm' },
+    { scenario: 'ap', path: 'example_project_folder/ap/1574_GLBH_S901G_CBECC2025 - ap.htm', name: '1574_GLBH_S901G_CBECC2025 - ap.htm' },
     { scenario: 'ab1', path: 'example_project_folder/ab1/1574_GLBH_S901G_CBECC2025 - ab1.htm', name: '1574_GLBH_S901G_CBECC2025 - ab1.htm' },
     { scenario: 'ab2', path: 'example_project_folder/ab2/1574_GLBH_S901G_CBECC2025 - ab2.htm', name: '1574_GLBH_S901G_CBECC2025 - ab2.htm' },
     { scenario: 'ab3', path: 'example_project_folder/ab3/1574_GLBH_S901G_CBECC2025 - ab3.htm', name: '1574_GLBH_S901G_CBECC2025 - ab3.htm' },
@@ -1379,126 +1724,81 @@ async function loadAppendSampleFolder() {
         parsedResults.push(parsed);
       }
     }
+
     if (parsedResults.length > 0) {
-      state.method3NewScenarios = parsedResults;
-      if (elements.appendDropFolder) elements.appendDropFolder.classList.add('has-file');
-      if (elements.appendFolderStatus) {
-        elements.appendFolderStatus.innerHTML = `<strong>5 Sample Scenarios</strong> (ap, ab1–ab4)`;
+      state.isAppendedData = false;
+      state.selectedFolderName = '1574_GLBH_S901G_CBECC2025';
+      state.loadedFolder = {
+        files: demoFiles,
+        name: state.selectedFolderName,
+        rawScenarios: parsedResults
+      };
+
+      if (elements.slotFolder) elements.slotFolder.classList.add('active-loaded');
+      if (elements.folderStatusLabel) {
+        elements.folderStatusLabel.innerHTML = `<strong>1574_GLBH_S901G_CBECC2025</strong> (5 sc)`;
       }
-      checkMethod3Ready();
-      showToast('Sample Folder Ready', 'Loaded 5 sample scenarios for appending!', '📁');
+      if (elements.clearFolderBtn) elements.clearFolderBtn.classList.remove('hidden');
+
+      updateCsvFilenamePreview();
+
+      if (elements.csvExportFilename) {
+        elements.csvExportFilename.value = getCleanCsvFilename('1574_GLBH_S901G_CBECC2025');
+      }
+      if (elements.csvExportLocation) {
+        elements.csvExportLocation.value = '..\\';
+      }
+
+      if (state.loadedCsv && state.loadedCsv.scenarios && state.loadedCsv.scenarios.length > 0) {
+        state.activeIngestionMethod = 3;
+        loadParsedScenarios([...state.loadedCsv.scenarios, ...parsedResults]);
+        syncCategoryMappings(state.scenarios, false);
+      } else {
+        state.activeIngestionMethod = 2;
+        loadParsedScenarios(parsedResults);
+        syncCategoryMappings(parsedResults, false);
+      }
+
+      updateExportSectionsVisibility();
+      if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
+        window.CBECC_SHARED.setFolder('example_project_folder', '1574_GLBH_S901G_CBECC2025', 'Compliance Tab');
+      }
+      showToast('Demo Loaded', 'Loaded 5 example scenarios (ap, ab1–ab4)', '✅');
     }
   } catch (err) {
-    showToast('Error', 'Could not load sample folder: ' + err.message, '⚠️');
+    console.warn('Could not auto-fetch example files:', err);
+    showToast('Browser Mode', 'Drag & drop or select your CBECC output files or folder to begin', 'ℹ️');
   }
 }
 
-function checkMethod3Ready() {
-  const ready = Boolean(state.method3BaseCsvRows && state.method3BaseCsvRows.length >= 3 &&
-                state.method3NewScenarios && state.method3NewScenarios.length > 0);
-  if (elements.executeLoadDashboardBtn) {
-    elements.executeLoadDashboardBtn.disabled = !ready;
-  }
-  if (elements.executeAppendBtn) {
-    elements.executeAppendBtn.disabled = !ready;
-  }
-}
+// =============================================================================
+// Method 3 / Dynamic CSV Append: Append Scenarios to Loaded CSV
+// =============================================================================
 
-/**
- * Method 3: Load Dashboard (does not append immediately)
- * Computes baseline average for new run, tags scenarios as runID_rev_scenario,
- * loads into dashboard, and populates checklist to let user choose scenarios to append.
- */
-function executeLoadDashboard() {
-  if (!state.method3BaseCsvRows || state.method3NewScenarios.length === 0) {
-    showToast('Missing Inputs', 'Please select both a base CSV and a model run folder first.', '⚠️');
-    return;
-  }
-
-  const runId = (elements.appendRunId ? elements.appendRunId.value.trim() : '') || 'Run_02';
-  const revision = (elements.appendRevision ? elements.appendRevision.value.trim() : '') || 'r34';
-
-  // 1. Prepare Base CSV scenarios (with composite names)
-  const baseResult = parseComplianceCSV(state.method3BaseCsvText, state.method3BaseFilename, true);
-  const baseScenarios = baseResult.success ? baseResult.scenarios : [];
-
-  // 2. Prepare New Run scenarios from HTM files
-  const order = { 'ap': 1, 'ab1': 2, 'ab2': 3, 'ab3': 4, 'ab4': 5 };
-  const sortedNew = [...state.method3NewScenarios].sort((a, b) => {
-    const ordA = order[a.scenarioName.toLowerCase()] || 99;
-    const ordB = order[b.scenarioName.toLowerCase()] || 99;
-    return ordA - ordB;
-  });
-
-  const newRunScenarios = sortedNew.map(sc => {
-    const rawName = sc.rawScenarioName || sc.scenarioName;
-    return {
-      ...sc,
-      rawScenarioName: rawName,
-      runId: runId,
-      revision: revision,
-      scenarioName: `${runId}_${revision}_${rawName}`,
-      sourceName: `${runId}_${revision}_${rawName} (${runId})`,
-      fileBaseName: `${runId}_${revision}_${rawName}.htm`,
-    };
-  });
-
-  // Calculate baseline average for new run
-  const newRunBaselines = newRunScenarios.filter(s => /(?:^|_)ab\d+$/i.test(s.rawScenarioName || s.scenarioName));
-  if (newRunBaselines.length > 0) {
-    const newRunAvg = computeBaselineAverageForGroup(newRunBaselines, runId, revision);
-    if (newRunAvg) {
-      newRunScenarios.push(newRunAvg);
-    }
-  }
-
-  // Combine both sets
-  const allScenarios = [...baseScenarios, ...newRunScenarios];
-  state.isAppendedData = true;
-  state.activeIngestionMethod = 3;
-
-  // Load into dashboard
-  loadParsedScenarios(allScenarios);
-
-  // Store the new run scenarios available for appending
-  state.method3ExtractedRunScenarios = newRunScenarios;
-
-  // Populate Append Checklist in Section
-  renderAppendChecklist(newRunScenarios, runId, revision);
-
-  // Set default export filename & location in append panel
-  if (elements.appendExportFilename) {
-    const baseClean = (state.method3BaseFilename || 'Results').replace(/\.csv$/i, '');
-    elements.appendExportFilename.value = `${baseClean}_${runId}.csv`;
-  }
-  if (elements.appendExportLocation) {
-    elements.appendExportLocation.value = '..\\';
-  }
-  if (elements.appendTargetCsvName) {
-    elements.appendTargetCsvName.textContent = state.method3BaseFilename || 'Results.csv';
-  }
-
-  updateExportSectionsVisibility();
-
-  if (elements.appendStatusBadge) {
-    elements.appendStatusBadge.className = 'source-status-info';
-    elements.appendStatusBadge.innerHTML = `<span>✅ <strong>Dashboard Loaded:</strong> Displaying ${allScenarios.length} scenarios across base run and new run <code>${runId}</code> (${revision}). Select which scenarios to append below.</span>`;
-    elements.appendStatusBadge.classList.remove('hidden');
-  }
-
-  showToast('Dashboard Loaded', `Loaded base run and new run ${runId} (${revision}) with Baseline Avg!`, '✅');
-}
-
-function renderAppendChecklist(scenarios, runId, revision) {
+function renderAppendChecklist() {
   if (!elements.appendScenarioChecklist) return;
   elements.appendScenarioChecklist.innerHTML = '';
 
-  scenarios.forEach((sc, idx) => {
+  const folderScenarios = (state.loadedFolder && state.loadedFolder.rawScenarios) || [];
+  if (folderScenarios.length === 0) {
+    elements.appendScenarioChecklist.innerHTML = '<span class="text-muted" style="font-size:0.8rem;padding:8px;">No model run folder loaded.</span>';
+    return;
+  }
+
+  // Scenarios belonging to the newly loaded folder + its computed Baseline Avg
+  const runScenarios = state.scenarios.filter(s => {
+    return folderScenarios.some(fs => fs.rawScenarioName === (s.rawScenarioName || s.scenarioName)) ||
+      (s.isCalculatedAverage && (!state.loadedCsv || !state.loadedCsv.scenarios.some(cs => cs.scenarioName === s.scenarioName)));
+  });
+
+  const displayList = runScenarios.length > 0 ? runScenarios : folderScenarios;
+
+  displayList.forEach((sc, idx) => {
     const raw = sc.rawScenarioName || sc.scenarioName;
     const isAvg = sc.isCalculatedAverage || raw.toLowerCase().includes('baseline avg');
     const labelText = isAvg ? `${sc.scenarioName} (Calculated Baseline Average)` :
-                      raw === 'ap' ? `${sc.scenarioName} (Proposed Design)` :
-                      `${sc.scenarioName} (${raw.toUpperCase()})`;
+      raw === 'ap' ? `${sc.scenarioName} (Proposed Design)` :
+        `${sc.scenarioName} (${raw.toUpperCase()})`;
 
     const itemDiv = document.createElement('div');
     itemDiv.className = 'append-check-item';
@@ -1514,25 +1814,121 @@ function renderAppendChecklist(scenarios, runId, revision) {
 }
 
 async function downloadAppendedCsv() {
-  if (!state.method3BaseCsvRows || !state.method3ExtractedRunScenarios) {
-    showToast('No Data', 'Please load dashboard with base CSV and new run first.', '⚠️');
+  if (!state.loadedCsv || !state.loadedCsv.rows || state.loadedCsv.rows.length < 3) {
+    showToast('No Base CSV', 'Please load a valid Results CSV first.', '⚠️');
+    return;
+  }
+  if (!state.loadedFolder || !state.loadedFolder.rawScenarios || state.loadedFolder.rawScenarios.length === 0) {
+    showToast('No Model Run', 'Please select a model run folder first.', '⚠️');
     return;
   }
 
-  const checkboxes = elements.appendScenarioChecklist.querySelectorAll('.append-scenario-cb:checked');
+  const checkboxes = elements.appendScenarioChecklist ? elements.appendScenarioChecklist.querySelectorAll('.append-scenario-cb:checked') : [];
   if (checkboxes.length === 0) {
     showToast('Selection Empty', 'Please select at least one scenario to append.', '⚠️');
     return;
   }
 
   const selectedNames = Array.from(checkboxes).map(cb => cb.value);
-  const scenariosToAppend = state.method3ExtractedRunScenarios.filter(sc => selectedNames.includes(sc.scenarioName));
+  const scenariosToAppend = state.scenarios.filter(sc => selectedNames.includes(sc.scenarioName));
 
-  // Clone base CSV rows and append selected scenarios
-  const combinedRows = state.method3BaseCsvRows.map(r => [...r]);
+  if (scenariosToAppend.length === 0) {
+    showToast('No Scenarios', 'No matching scenarios to append.', '⚠️');
+    return;
+  }
+
+  // Work with a deep clone of the base CSV rows
+  const combinedRows = state.loadedCsv.rows.map(r => [...r]);
+  const row0 = combinedRows[0];
+  const row1 = combinedRows[1];
+  const row2 = combinedRows[2];
+
+  // Current column definitions from CSV
+  const currentCols = [...(state.loadedCsv.colDefs || [])];
+
+  // Identify new non-zero categories in scenariosToAppend not in currentCols
+  const newElecCats = [];
+  const newGasCats = [];
+
   scenariosToAppend.forEach(sc => {
+    const rawMap = sc.rawCategoryMap || {};
+    Object.keys(rawMap).forEach(cat => {
+      const r = rawMap[cat];
+      if (!r || r.isTotal) return;
+      if (Math.abs(r.elecKwh || 0) > 0 || Math.abs(r.elecDemW || 0) > 0) {
+        if (!currentCols.some(cd => cd.isElec && cd.rawCat === cat) && !newElecCats.includes(cat)) {
+          newElecCats.push(cat);
+        }
+      }
+      if (Math.abs(r.gasTherm || 0) > 0 || Math.abs(r.gasDemBtuh || 0) > 0) {
+        if (!currentCols.some(cd => !cd.isElec && cd.rawCat === cat) && !newGasCats.includes(cat)) {
+          newGasCats.push(cat);
+        }
+      }
+    });
+  });
+
+  // Append new electric column pairs
+  newElecCats.forEach(rawCat => {
+    const mapRule = state.categoryMapping[`${rawCat}___elec`];
+    const userCat = mapRule ? mapRule.userCategory : getDefaultCategoryMapping(rawCat, 'elec');
+    const energyCol = row2.length;
+    const demandCol = energyCol + 1;
+
+    row0.push(userCat, '');
+    row1.push(rawCat, '');
+    row2.push('[kWh]', '[W]');
+
+    // Pad existing data rows with 0
+    for (let r = 3; r < combinedRows.length; r++) {
+      combinedRows[r].push('0.00', '0.00');
+    }
+
+    currentCols.push({ energyCol, demandCol, isElec: true, fuel: 'elec', rawCat, userCat });
+  });
+
+  // Append new gas column pairs
+  newGasCats.forEach(rawCat => {
+    const mapRule = state.categoryMapping[`${rawCat}___gas`];
+    const userCat = mapRule ? mapRule.userCategory : getDefaultCategoryMapping(rawCat, 'gas');
+    const energyCol = row2.length;
+    const demandCol = energyCol + 1;
+
+    row0.push(userCat, '');
+    row1.push(rawCat, '');
+    row2.push('[therm]', '[Btu/h]');
+
+    // Pad existing data rows with 0
+    for (let r = 3; r < combinedRows.length; r++) {
+      combinedRows[r].push('0.00', '0.00');
+    }
+
+    currentCols.push({ energyCol, demandCol, isElec: false, fuel: 'gas', rawCat, userCat });
+  });
+
+  // Build rows for each scenario to append
+  const runId = (elements.csvRunId && elements.csvRunId.value.trim()) || 'Run_02';
+  const revision = (elements.csvRevision && elements.csvRevision.value.trim()) || 'r34';
+
+  scenariosToAppend.forEach(sc => {
+    const scRunId = sc.runId || runId;
+    const scRev = sc.revision || revision;
     const rawName = sc.rawScenarioName || sc.scenarioName;
-    const newRow = formatScenarioCsvRow(sc, sc.runId, sc.revision, rawName);
+    const area = sc.buildingArea !== undefined ? formatNumRaw(sc.buildingArea, 2) : '0.00';
+
+    const newRow = [scRunId, scRev, rawName, area];
+
+    currentCols.forEach(cd => {
+      const r = (sc.rawCategoryMap && sc.rawCategoryMap[cd.rawCat]) || null;
+      if (cd.isElec) {
+        newRow.push(formatNumRaw(r ? r.elecKwh : 0, 2));
+        newRow.push(formatNumRaw(r ? r.elecDemW : 0, 2));
+      } else {
+        newRow.push(formatNumRaw(r ? r.gasTherm : 0, 2));
+        newRow.push(formatNumRaw(r ? r.gasDemBtuh : 0, 2));
+      }
+    });
+
     combinedRows.push(newRow);
   });
 
@@ -1545,59 +1941,41 @@ async function downloadAppendedCsv() {
     }).join(',')
   ).join('\r\n');
 
-  const filename = state.method3BaseFilename || 'Results.csv';
+  const filename = state.loadedCsv.name || 'Results.csv';
 
-  // --- Path 1: Direct overwrite via pre-captured file handle (future use) ---
-  if (state.method3BaseFileHandle) {
-    try {
-      const writable = await state.method3BaseFileHandle.createWritable();
-      await writable.write(csvContent);
-      await writable.close();
-      state.method3BaseCsvRows = combinedRows;
-      showToast('CSV Overwritten', `Directly overwrote "${filename}" with ${scenariosToAppend.length} appended scenario(s).`, '💾');
-    } catch (err) {
-      showToast('Write Failed', `Could not overwrite file: ${err.message}`, '⚠️');
-    }
-    return;
-  }
-
-  // --- Path 2: showSaveFilePicker — lets user navigate to original file and overwrite it ---
+  // Save via showSaveFilePicker if available
   if (window.showSaveFilePicker) {
     try {
       const fileHandle = await window.showSaveFilePicker({
         suggestedName: filename,
         types: [{ description: 'CSV File', accept: { 'text/csv': ['.csv'] } }],
-        // Default the dialog to the folder where the base CSV was loaded from
-        ...(state.method3BaseCsvFileHandle ? { startIn: state.method3BaseCsvFileHandle } : {}),
       });
       const writable = await fileHandle.createWritable();
       await writable.write(csvContent);
       await writable.close();
-      // Cache handle for future saves in this session
-      state.method3BaseFileHandle = fileHandle;
-      state.method3BaseCsvRows = combinedRows;
       showToast('CSV Overwritten', `Saved "${fileHandle.name}" with ${scenariosToAppend.length} appended scenario(s).`, '💾');
+      loadCsvContent(csvContent, fileHandle.name);
+      return;
     } catch (err) {
       if (err.name !== 'AbortError') {
         showToast('Save Failed', `Could not save file: ${err.message}`, '⚠️');
       }
     }
-    return;
   }
 
-  // --- Path 3: Fallback — standard browser download (creates new file in Downloads) ---
-  state.method3BaseCsvRows = combinedRows;
+  // Fallback: standard browser download
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  showToast('CSV Downloaded', `Saved "${filename}" (${scenariosToAppend.length} scenario(s) appended). Check your Downloads folder.`, '💾');
+  loadCsvContent(csvContent, filename);
+  showToast('CSV Downloaded', `Saved "${filename}" (${scenariosToAppend.length} scenario(s) appended).`, '💾');
 }
 
 // =============================================================================
@@ -1648,36 +2026,36 @@ function computeBaselineAverageForGroup(baselines, runId = '', revision = '') {
   });
 
   allRawKeys.forEach(raw => {
-    let sumElecKwh    = 0;
-    let sumElecDemW   = 0;
-    let sumGasTherm   = 0;
+    let sumElecKwh = 0;
+    let sumElecDemW = 0;
+    let sumGasTherm = 0;
     let sumGasDemBtuh = 0;
 
     baselines.forEach(b => {
       const r = (b.rawCategoryMap && b.rawCategoryMap[raw]) || (b.categoryMap && b.categoryMap[raw]);
       if (r) {
-        sumElecKwh    += (r.elecKwh || 0);
-        sumElecDemW   += (r.elecDemW || 0);
-        sumGasTherm   += (r.gasTherm || 0);
+        sumElecKwh += (r.elecKwh || 0);
+        sumElecDemW += (r.elecDemW || 0);
+        sumGasTherm += (r.gasTherm || 0);
         sumGasDemBtuh += (r.gasDemBtuh || 0);
       }
     });
 
-    const avgElecKwh    = sumElecKwh / count;
-    const avgElecDemW   = sumElecDemW / count;
-    const avgGasTherm   = sumGasTherm / count;
+    const avgElecKwh = sumElecKwh / count;
+    const avgElecDemW = sumElecDemW / count;
+    const avgGasTherm = sumGasTherm / count;
     const avgGasDemBtuh = sumGasDemBtuh / count;
 
-    const elecKbtu  = avgElecKwh * CONVERSIONS.KWH_TO_KBTU;
-    const gasKbtu   = avgGasTherm * CONVERSIONS.THERM_TO_KBTU;
+    const elecKbtu = avgElecKwh * CONVERSIONS.KWH_TO_KBTU;
+    const gasKbtu = avgGasTherm * CONVERSIONS.THERM_TO_KBTU;
     const totalKbtu = elecKbtu + gasKbtu;
 
     rawCategoryMap[raw] = {
       rawCategory: raw,
       isTotal: false,
-      elecKwh:    avgElecKwh,
-      elecDemW:   avgElecDemW,
-      gasTherm:   avgGasTherm,
+      elecKwh: avgElecKwh,
+      elecDemW: avgElecDemW,
+      gasTherm: avgGasTherm,
       gasDemBtuh: avgGasDemBtuh,
       elecKbtu,
       gasKbtu,
@@ -1691,12 +2069,12 @@ function computeBaselineAverageForGroup(baselines, runId = '', revision = '') {
   let totalElecKwh = 0;
   let totalGasTherm = 0;
   Object.values(categoryMap).forEach(c => {
-    totalElecKwh  += c.elecKwh;
+    totalElecKwh += c.elecKwh;
     totalGasTherm += c.gasTherm;
   });
 
-  const totalElecKbtu  = totalElecKwh  * CONVERSIONS.KWH_TO_KBTU;
-  const totalGasKbtu   = totalGasTherm * CONVERSIONS.THERM_TO_KBTU;
+  const totalElecKbtu = totalElecKwh * CONVERSIONS.KWH_TO_KBTU;
+  const totalGasKbtu = totalGasTherm * CONVERSIONS.THERM_TO_KBTU;
   const grandTotalKbtu = totalElecKbtu + totalGasKbtu;
 
   const compositeName = (runId && revision)
@@ -1715,13 +2093,13 @@ function computeBaselineAverageForGroup(baselines, runId = '', revision = '') {
     categoryMap,
     rawCategoryMap,
     summary: {
-      totalElectricity_kWh:  totalElecKwh,
+      totalElectricity_kWh: totalElecKwh,
       totalNaturalGas_therm: totalGasTherm,
       totalElectricity_kBtu: totalElecKbtu,
-      totalNaturalGas_kBtu:  totalGasKbtu,
-      grandTotal_kBtu:       grandTotalKbtu,
+      totalNaturalGas_kBtu: totalGasKbtu,
+      grandTotal_kBtu: grandTotalKbtu,
       electricitySharePercent: grandTotalKbtu > 0 ? (totalElecKbtu / grandTotalKbtu) * 100 : 0,
-      naturalGasSharePercent:  grandTotalKbtu > 0 ? (totalGasKbtu  / grandTotalKbtu) * 100 : 0,
+      naturalGasSharePercent: grandTotalKbtu > 0 ? (totalGasKbtu / grandTotalKbtu) * 100 : 0,
     }
   };
 }
@@ -1768,7 +2146,7 @@ function loadParsedScenarios(scenarios) {
   const filtered = scenarios.filter(s => {
     const scLower = s.scenarioName.toLowerCase();
     return !scLower.startsWith('zb') && !scLower.startsWith('zp') &&
-           !scLower.includes('- zb') && !scLower.includes('- zp');
+      !scLower.includes('- zb') && !scLower.includes('- zp');
   });
 
   state.rawScenarios = [...filtered];
@@ -1855,6 +2233,8 @@ function loadParsedScenarios(scenarios) {
   updateCsvFilenamePreview();
   renderScenariosPills();
   renderDropdownSelectors();
+  renderCategoryMappingUI();
+  renderCategoryFilterChips();
   updateExportSectionsVisibility();
 
   elements.scenariosContainer.classList.remove('hidden');
@@ -1983,96 +2363,120 @@ function updateMetrics(scenarios) {
   const displayUnit = getDisplayUnitLabel();
   document.querySelectorAll('.unit-label').forEach(el => el.textContent = displayUnit);
 
-  let totalElecKwh  = 0;
+  if (!elements.metricTotalEnergy) return;
+
+  let totalElecKwh = 0;
   let totalGasTherm = 0;
-  let totalKbtu     = 0;
+  let totalKbtu = 0;
   const categoryTotals = {};
 
   scenarios.forEach(sc => {
-    totalElecKwh  += sc.summary.totalElectricity_kWh;
+    totalElecKwh += sc.summary.totalElectricity_kWh;
     totalGasTherm += sc.summary.totalNaturalGas_therm;
-    totalKbtu     += sc.summary.grandTotal_kBtu;
+    totalKbtu += sc.summary.grandTotal_kBtu;
 
     FIXED_CATEGORIES.forEach(fc => {
-      const r = sc.categoryMap[fc.raw];
+      const r = sc.categoryMap ? sc.categoryMap[fc.raw] : null;
       if (r && !r.isTotal) {
         categoryTotals[fc.raw] = (categoryTotals[fc.raw] || 0) + getScenarioCategoryEnergyValue(sc, r);
       }
     });
   });
 
-  const count       = scenarios.length;
-  const avgKbtu     = totalKbtu    / count;
-  const avgElecKwh  = totalElecKwh / count;
+  const count = scenarios.length;
+  const avgKbtu = totalKbtu / count;
+  const avgElecKwh = totalElecKwh / count;
   const avgGasTherm = totalGasTherm / count;
 
-  const totalElecKbtu = avgElecKwh  * CONVERSIONS.KWH_TO_KBTU;
-  const totalGasKbtu  = avgGasTherm * CONVERSIONS.THERM_TO_KBTU;
+  const totalElecKbtu = avgElecKwh * CONVERSIONS.KWH_TO_KBTU;
+  const totalGasKbtu = avgGasTherm * CONVERSIONS.THERM_TO_KBTU;
 
   let displayTotal = avgKbtu;
-  let displayElec  = avgElecKwh;
-  let displayGas   = avgGasTherm;
+  let displayElec = avgElecKwh;
+  let displayGas = avgGasTherm;
 
-  if (state.energyUnit === 'eui') {
+  if (state.energyUnit === 'eui' || state.energyUnit === 'eui-elec' || state.energyUnit === 'eui-gas') {
     displayTotal = scenarios.reduce((sum, sc) => sum + getScenarioEnergyValue(sc), 0) / count;
     displayElec = displayTotal;
     displayGas = displayTotal;
   } else if (state.energyUnit === 'kWh') {
     displayTotal = avgElecKwh;
-    displayElec  = avgElecKwh;
-    displayGas   = avgGasTherm;
+    displayElec = avgElecKwh;
+    displayGas = avgGasTherm;
   } else if (state.energyUnit === 'therm') {
     displayTotal = avgGasTherm;
-    displayElec  = avgElecKwh * CONVERSIONS.KWH_TO_THERM;
-    displayGas   = avgGasTherm;
+    displayElec = avgElecKwh * CONVERSIONS.KWH_TO_THERM;
+    displayGas = avgGasTherm;
   } else {
     displayElec = totalElecKbtu;
-    displayGas  = totalGasKbtu;
+    displayGas = totalGasKbtu;
   }
 
-  elements.metricTotalEnergy.textContent  = `${formatNum(displayTotal, 0)} ${displayUnit}`;
-  elements.metricTotalSubtitle.textContent = count > 1 ? `Average across ${count} selected scenarios` : `${scenarios[0].scenarioName} total energy`;
+  elements.metricTotalEnergy.textContent = `${formatNum(displayTotal, 0)} ${displayUnit}`;
+  if (elements.metricTotalSubtitle) {
+    elements.metricTotalSubtitle.textContent = count > 1 ? `Average across ${count} selected scenarios` : `${scenarios[0].scenarioName} total energy`;
+  }
 
   const elecPct = avgKbtu > 0 ? (totalElecKbtu / avgKbtu) * 100 : 0;
-  const gasPct  = avgKbtu > 0 ? (totalGasKbtu  / avgKbtu) * 100 : 0;
+  const gasPct = avgKbtu > 0 ? (totalGasKbtu / avgKbtu) * 100 : 0;
 
-  elements.metricElecVal.textContent     = `${formatNum(displayElec, 0)} ${displayUnit}`;
-  elements.metricElecPercent.textContent = `${formatNum(elecPct, 1)}% of total energy`;
-  elements.metricGasVal.textContent      = `${formatNum(displayGas, 0)} ${displayUnit}`;
-  elements.metricGasPercent.textContent  = `${formatNum(gasPct, 1)}% of total energy`;
+  if (elements.metricElecVal) elements.metricElecVal.textContent = `${formatNum(displayElec, 0)} ${displayUnit}`;
+  if (elements.metricElecPercent) elements.metricElecPercent.textContent = `${formatNum(elecPct, 1)}% of total energy`;
+  if (elements.metricGasVal) elements.metricGasVal.textContent = `${formatNum(displayGas, 0)} ${displayUnit}`;
+  if (elements.metricGasPercent) elements.metricGasPercent.textContent = `${formatNum(gasPct, 1)}% of total energy`;
 
   let topCat = '-';
-  let topVal  = 0;
+  let topVal = 0;
   Object.entries(categoryTotals).forEach(([cat, val]) => {
     if (val > topVal) { topVal = val; topCat = cat; }
   });
 
   const peakDisplayVal = topVal / count;
-
   const fc = FIXED_CATEGORIES.find(c => c.raw === topCat);
-  elements.metricPeakCategory.textContent = fc ? (state.cleanLabels ? fc.label : fc.raw) : topCat;
-  elements.metricPeakVal.textContent      = `${formatNum(peakDisplayVal, 0)} ${displayUnit} avg`;
+  if (elements.metricPeakCategory) elements.metricPeakCategory.textContent = fc ? (state.cleanLabels ? fc.label : fc.raw) : topCat;
+  if (elements.metricPeakVal) elements.metricPeakVal.textContent = `${formatNum(peakDisplayVal, 0)} ${displayUnit} avg`;
 }
 
 // =============================================================================
-// Chart.js Visualization Engine (unchanged from previous)
+// Chart.js Visualization Engine
 // =============================================================================
 
 function getChartCategories(scenarios) {
-  return FIXED_CATEGORIES.filter(fc => {
-    if (!state.hideZeroes) return true;
-    return scenarios.some(sc => {
-      const r = sc.categoryMap[fc.raw];
-      return r && getScenarioCategoryEnergyValue(sc, r) !== 0;
-    });
+  const catSet = new Set();
+  scenarios.forEach(sc => {
+    if (sc.categoryMap) {
+      Object.keys(sc.categoryMap).forEach(c => catSet.add(c));
+    }
   });
+
+  const allCats = Array.from(catSet).sort();
+  const filtered = allCats.filter(cat => {
+    // 1. Filter by user selection in filter chips
+    if (state.visibleCategories && state.visibleCategories.size > 0 && !state.visibleCategories.has(cat)) {
+      return false;
+    }
+    // 2. Hide zero rows if enabled
+    if (state.hideZeroes) {
+      const hasNonZero = scenarios.some(sc => {
+        const r = sc.categoryMap ? sc.categoryMap[cat] : null;
+        return r && getScenarioCategoryEnergyValue(sc, r) !== 0;
+      });
+      if (!hasNonZero) return false;
+    }
+    return true;
+  });
+
+  return filtered.map(cat => ({
+    raw: cat,
+    label: cat
+  }));
 }
 
 function updateChart(scenarios) {
   if (state.chartInstance) { state.chartInstance.destroy(); }
 
   const displayUnit = getDisplayUnitLabel();
-  elements.chartUnitBadge.textContent  = `Units: ${displayUnit}`;
+  elements.chartUnitBadge.textContent = `Units: ${displayUnit}`;
   elements.chartMainTitle.textContent = `${state.viewMode === 'stacked' ? 'Stacked' : 'Clustered'} End-Use Energy by Scenario (${displayUnit})`;
 
   const visibleCats = getChartCategories(scenarios);
@@ -2088,10 +2492,12 @@ function updateChart(scenarios) {
     chartConfig = {
       type: 'doughnut',
       data: { labels, datasets: [{ data: dataVals, backgroundColor: CHART_COLORS.slice(0, visibleCats.length), borderWidth: 2, borderColor: isDark ? '#161D26' : '#FFFFFF' }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: {
-        legend: { position: 'right', labels: { color: isDark ? '#A0B0C0' : '#4F6173', font: { family: 'Yu Gothic, Raleway, Inter', weight: '600' }, boxWidth: 14 } },
-        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${formatNum(ctx.raw)} ${state.energyUnit}` } }
-      }}
+      options: {
+        responsive: true, maintainAspectRatio: false, plugins: {
+          legend: { position: 'right', labels: { color: isDark ? '#A0B0C0' : '#4F6173', font: { family: 'Yu Gothic, Raleway, Inter', weight: '600' }, boxWidth: 14 } },
+          tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${formatNum(ctx.raw)} ${state.energyUnit}` } }
+        }
+      }
     };
   }
 
@@ -2146,7 +2552,7 @@ function updateChart(scenarios) {
 }
 
 function getCommonChartOptions(stacked = false) {
-  const isDark    = document.body.classList.contains('dark-theme');
+  const isDark = document.body.classList.contains('dark-theme');
   const textColor = isDark ? '#A0B0C0' : '#4F6173';
   const gridColor = isDark ? '#2D3A4B' : '#E8EEF3';
   return {
@@ -2163,10 +2569,25 @@ function getCommonChartOptions(stacked = false) {
 }
 
 // =============================================================================
-// Fixed-Column Table Generation
-// Layout: [Category] then for each scenario (ap first): [Elec kWh | Elec Dem W | Gas therm | Gas Dem Btu/h]
-// Electricity-only rows: Gas cells show "-"
+// Active Table Generation (Dynamic Categories)
 // =============================================================================
+
+function getActiveTableCategories(scenarios) {
+  const catSet = new Set();
+  scenarios.forEach(sc => {
+    if (sc.categoryMap) {
+      Object.keys(sc.categoryMap).forEach(k => catSet.add(k));
+    }
+  });
+  if (catSet.size === 0) {
+    return FIXED_CATEGORIES.map(fc => ({ raw: fc.raw, label: fc.label, electricityOnly: fc.electricityOnly }));
+  }
+  return Array.from(catSet).sort().map(cat => ({
+    raw: cat,
+    label: cat,
+    electricityOnly: false
+  }));
+}
 
 function updateTable(scenarios) {
   elements.tableHead.innerHTML = '';
@@ -2195,20 +2616,19 @@ function updateTable(scenarios) {
 
   elements.tableHead.innerHTML = head1 + head2;
 
-  // ---- Column totals accumulators ----
-  // Per scenario: [sumElecKwh, sumElecDemW, sumGasTherm, sumGasDemBtuh]
   const columnTotals = scenarios.map(() => [0, 0, 0, 0]);
+  const categories = getActiveTableCategories(scenarios);
 
-  // ---- Data rows (fixed list) ----
-  FIXED_CATEGORIES.forEach(fc => {
+  // ---- Data rows ----
+  categories.forEach(fc => {
     const row = document.createElement('tr');
     let rowHtml = `<td class="cat-col">${state.cleanLabels ? fc.label : fc.raw}</td>`;
 
     scenarios.forEach((sc, sIdx) => {
-      const r = sc.categoryMap[fc.raw];
-      const elecKwh    = r ? r.elecKwh    : 0;
-      const elecDemW   = r ? r.elecDemW   : 0;
-      const gasTherm   = r ? r.gasTherm   : 0;
+      const r = sc.categoryMap ? sc.categoryMap[fc.raw] : null;
+      const elecKwh = r ? r.elecKwh : 0;
+      const elecDemW = r ? r.elecDemW : 0;
+      const gasTherm = r ? r.gasTherm : 0;
       const gasDemBtuh = r ? r.gasDemBtuh : 0;
 
       columnTotals[sIdx][0] += elecKwh;
@@ -2247,7 +2667,7 @@ function updateTable(scenarios) {
 
 function generateTSVForExcel() {
   const table = elements.complianceDataTable;
-  const rows  = Array.from(table.querySelectorAll('tr'));
+  const rows = Array.from(table.querySelectorAll('tr'));
   return rows.map(row => {
     const cells = Array.from(row.querySelectorAll('th, td'));
     return cells.map(cell => cell.textContent.trim()).join('\t');
@@ -2320,15 +2740,16 @@ function exportExcelWorkbook() {
 
   // Column totals
   const columnTotals = activeScenariosList.map(() => [0, 0, 0, 0]);
+  const categories = getActiveTableCategories(activeScenariosList);
 
   // Data rows
-  FIXED_CATEGORIES.forEach(fc => {
+  categories.forEach(fc => {
     const row = [state.cleanLabels ? fc.label : fc.raw];
     activeScenariosList.forEach((sc, sIdx) => {
-      const r = sc.categoryMap[fc.raw];
-      const elecKwh    = r ? r.elecKwh    : 0;
-      const elecDemW   = r ? r.elecDemW   : 0;
-      const gasTherm   = r ? r.gasTherm   : 0;
+      const r = sc.categoryMap ? sc.categoryMap[fc.raw] : null;
+      const elecKwh = r ? r.elecKwh : 0;
+      const elecDemW = r ? r.elecDemW : 0;
+      const gasTherm = r ? r.gasTherm : 0;
       const gasDemBtuh = r ? r.gasDemBtuh : 0;
 
       columnTotals[sIdx][0] += elecKwh;
@@ -2410,22 +2831,15 @@ function exportExcelWorkbook() {
 }
 
 // =============================================================================
-// CSV Export: Append rows to a persistent CSV log
-// CSV columns: Run ID, Revision, Scenario, [Category x4 columns per scenario]
-// Each row = one scenario's full data for that run
+// CSV Export: Dynamic Non-Zero Category 3-Header CSV Log
+// Matches example_project_folder - Results.csv format
 // =============================================================================
 
-/**
- * Builds the wide 68-column CSV rows matching the compliance log template.
- * Two header rows + one data row per scenario in scope.
- * Scope: 'all' (ap, ab1-ab4, Baseline Avg) or 'active' (selected scenarios only).
- */
 function buildCsvRowsForExport() {
-  const runId    = (elements.csvRunId && elements.csvRunId.value.trim()) || 'Run_01';
+  const runId = (elements.csvRunId && elements.csvRunId.value.trim()) || 'Run_01';
   const revision = (elements.csvRevision && elements.csvRevision.value.trim()) || 'r33';
-  const scope    = elements.csvExportScope ? elements.csvExportScope.value : 'all';
+  const scope = elements.csvExportScope ? elements.csvExportScope.value : 'all';
 
-  // Determine which scenarios to export
   let exportScenarios;
   if (scope === 'active') {
     exportScenarios = state.scenarios.filter(s => state.selectedScenarios.includes(s.scenarioName));
@@ -2435,24 +2849,88 @@ function buildCsvRowsForExport() {
 
   if (exportScenarios.length === 0) return [];
 
-  const rows = [];
+  // 1. Collect all non-zero categories across exportScenarios
+  const elecCatSet = new Set();
+  const gasCatSet = new Set();
 
-  // Header row 1: Dashboard category names (Row 1)
-  rows.push(CSV_HEADER_ROW_1);
-
-  // Header row 2: HTM category names (Row 2)
-  rows.push(CSV_HEADER_ROW_2);
-
-  // Header row 3: Units (Row 3)
-  rows.push(CSV_HEADER_ROW_3);
-
-  // One data row per scenario
   exportScenarios.forEach(sc => {
-    const rawName = sc.rawScenarioName || sc.scenarioName;
+    const rawMap = sc.rawCategoryMap || {};
+    Object.keys(rawMap).forEach(cat => {
+      const r = rawMap[cat];
+      if (!r || r.isTotal) return;
+      if (Math.abs(r.elecKwh || 0) > 0 || Math.abs(r.elecDemW || 0) > 0) {
+        elecCatSet.add(cat);
+      }
+      if (Math.abs(r.gasTherm || 0) > 0 || Math.abs(r.gasDemBtuh || 0) > 0) {
+        gasCatSet.add(cat);
+      }
+    });
+  });
+
+  // Sort canonical or alphabetical
+  const sortedElec = Array.from(elecCatSet).sort((a, b) => {
+    const idxA = CSV_ELECS.indexOf(a);
+    const idxB = CSV_ELECS.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  const sortedGas = Array.from(gasCatSet).sort((a, b) => {
+    const idxA = CSV_GASES.indexOf(a);
+    const idxB = CSV_GASES.indexOf(b);
+    if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+    if (idxA !== -1) return -1;
+    if (idxB !== -1) return 1;
+    return a.localeCompare(b);
+  });
+
+  // 2. Build 3 Header Rows
+  const row0 = ['', '', '', 'Building Area'];
+  const row1 = ['Run ID', 'Rev #', 'Scenario', 'Building Area [ft2]'];
+  const row2 = ['', '', '', '[ft2]'];
+
+  sortedElec.forEach(rawCat => {
+    const mapRule = state.categoryMapping[`${rawCat}___elec`];
+    const userCat = mapRule ? mapRule.userCategory : getDefaultCategoryMapping(rawCat, 'elec');
+    row0.push(userCat, '');
+    row1.push(rawCat, '');
+    row2.push('[kWh]', '[W]');
+  });
+
+  sortedGas.forEach(rawCat => {
+    const mapRule = state.categoryMapping[`${rawCat}___gas`];
+    const userCat = mapRule ? mapRule.userCategory : getDefaultCategoryMapping(rawCat, 'gas');
+    row0.push(userCat, '');
+    row1.push(rawCat, '');
+    row2.push('[therm]', '[Btu/h]');
+  });
+
+  const rows = [row0, row1, row2];
+
+  // 3. Build data rows for each scenario
+  exportScenarios.forEach(sc => {
     const rId = sc.runId || runId;
     const rev = sc.revision || revision;
-    const row = formatScenarioCsvRow(sc, rId, rev, rawName);
-    rows.push(row);
+    const rawName = sc.rawScenarioName || sc.scenarioName;
+    const area = sc.buildingArea !== undefined ? formatNumRaw(sc.buildingArea, 2) : '0.00';
+
+    const dataRow = [rId, rev, rawName, area];
+
+    sortedElec.forEach(rawCat => {
+      const r = (sc.rawCategoryMap && sc.rawCategoryMap[rawCat]) || null;
+      dataRow.push(formatNumRaw(r ? r.elecKwh : 0, 2));
+      dataRow.push(formatNumRaw(r ? r.elecDemW : 0, 2));
+    });
+
+    sortedGas.forEach(rawCat => {
+      const r = (sc.rawCategoryMap && sc.rawCategoryMap[rawCat]) || null;
+      dataRow.push(formatNumRaw(r ? r.gasTherm : 0, 2));
+      dataRow.push(formatNumRaw(r ? r.gasDemBtuh : 0, 2));
+    });
+
+    rows.push(dataRow);
   });
 
   return rows;
@@ -2480,7 +2958,6 @@ async function browseFolderForExport() {
     if (err.name !== 'AbortError') {
       showToast('Folder Error', 'The folder picker could not open that location. Please choose the parent folder where the model folder is stored.', '⚠️');
     }
-    // User cancelled — clear status if nothing was previously chosen
     if (!state.csvExportDirHandle && elements.csvLocationStatus) {
       elements.csvLocationStatus.textContent = '';
     }
@@ -2517,13 +2994,12 @@ async function downloadCSVLog() {
   if (state.csvExportDirHandle) {
     try {
       const fileHandle = await state.csvExportDirHandle.getFileHandle(filename, { create: true });
-      const writable  = await fileHandle.createWritable();
+      const writable = await fileHandle.createWritable();
       await writable.write(csvContent);
       await writable.close();
       showToast('CSV Saved', `Saved to "${state.csvExportDirHandle.name}\\${filename}" — ${dataRowCount} scenario row(s).`, '💾');
       return;
     } catch (err) {
-      // Permission revoked or write failed — fall through to standard download
       showToast('Write Failed', `Could not write to folder: ${err.message}. Falling back to browser download.`, '⚠️');
       state.csvExportDirHandle = null;
       if (elements.csvLocationStatus) {
@@ -2535,23 +3011,22 @@ async function downloadCSVLog() {
 
   // --- Path 2: standard browser download ---
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
   a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  const location = (elements.csvExportLocation && elements.csvExportLocation.value.trim()) || '(browser download location)';
-  showToast('CSV Downloaded', `${filename} — ${dataRowCount} scenario row(s). Browser downloads are controlled by the browser; choose the model folder's parent with Browse to save there directly.`, '💾');
+  showToast('CSV Downloaded', `${filename} — ${dataRowCount} scenario row(s).`, '💾');
 }
 
 function downloadChartImage() {
   if (!state.chartInstance) return;
-  const a    = document.createElement('a');
-  a.href     = state.chartInstance.toBase64Image();
+  const a = document.createElement('a');
+  a.href = state.chartInstance.toBase64Image();
   a.download = `energy_chart_${state.viewMode}_${state.energyUnit}.png`;
   document.body.appendChild(a);
   a.click();
@@ -2560,7 +3035,7 @@ function downloadChartImage() {
 }
 
 function showToast(title, message, icon = '✅') {
-  elements.toastTitle.textContent   = title;
+  elements.toastTitle.textContent = title;
   elements.toastMessage.textContent = message;
   elements.toast.querySelector('.toast-icon').textContent = icon;
   elements.toast.classList.remove('hidden');
@@ -2582,15 +3057,15 @@ function setupEventListeners() {
     if (state.scenarios.length > 0) updateDashboard();
   });
 
-  // Tab switching
-  setupTabs();
-
-  // Mode 1: Results CSV
+  // Slot 1: Results CSV
   if (elements.browseCsvBtn && elements.browserCsvInput) {
     elements.browseCsvBtn.addEventListener('click', () => elements.browserCsvInput.click());
     elements.browserCsvInput.addEventListener('change', e => {
       if (e.target.files.length > 0) handleCsvFile(e.target.files[0]);
     });
+  }
+  if (elements.clearCsvBtn) {
+    elements.clearCsvBtn.addEventListener('click', clearCsvSelection);
   }
   if (elements.loadSampleCsvBtn) {
     elements.loadSampleCsvBtn.addEventListener('click', loadSampleCsv);
@@ -2605,7 +3080,7 @@ function setupEventListeners() {
     });
   }
 
-  // Mode 2: Model Folder
+  // Slot 2: Model Folder
   if (elements.browseFolderBtn && elements.browserFolderInput) {
     elements.browseFolderBtn.addEventListener('click', () => elements.browserFolderInput.click());
     elements.browserFolderInput.addEventListener('change', e => {
@@ -2617,6 +3092,9 @@ function setupEventListeners() {
     elements.browserFilesInput.addEventListener('change', e => {
       if (e.target.files.length > 0) handleFileList(e.target.files);
     });
+  }
+  if (elements.clearFolderBtn) {
+    elements.clearFolderBtn.addEventListener('click', clearFolderSelection);
   }
   if (elements.loadSampleFolderBtn) {
     elements.loadSampleFolderBtn.addEventListener('click', loadExampleDataInBrowser);
@@ -2631,77 +3109,50 @@ function setupEventListeners() {
     });
   }
 
-  // Mode 3: Append Model Run to CSV
-  if (elements.appendBrowseCsvBtn && elements.appendCsvInput) {
-    elements.appendBrowseCsvBtn.addEventListener('click', async () => {
-      // Use showOpenFilePicker when available so we can capture the FileSystemFileHandle
-      // (needed to default the save dialog to the same folder later)
-      if (window.showOpenFilePicker) {
-        try {
-          const [fileHandle] = await window.showOpenFilePicker({
-            types: [{ description: 'CSV File', accept: { 'text/csv': ['.csv'], 'application/vnd.ms-excel': ['.csv'] } }],
-            multiple: false,
-          });
-          state.method3BaseCsvFileHandle = fileHandle;
-          state.method3BaseFileHandle = null; // reset output handle when a new base CSV is loaded
-          const file = await fileHandle.getFile();
-          handleAppendBaseCsv(file);
-        } catch (err) {
-          if (err.name !== 'AbortError') {
-            showToast('Error', 'Could not open file: ' + err.message, '❌');
-          }
-        }
-      } else {
-        elements.appendCsvInput.click();
-      }
-    });
-    elements.appendCsvInput.addEventListener('change', e => {
-      if (e.target.files.length > 0) handleAppendBaseCsv(e.target.files[0]);
+  // Slot 3: CBECC Model Workbook
+  if (elements.browseWbBtn && elements.browserWbInput) {
+    elements.browseWbBtn.addEventListener('click', () => elements.browserWbInput.click());
+    elements.browserWbInput.addEventListener('change', e => {
+      if (e.target.files.length > 0) handleWorkbookUpload(e.target.files[0]);
     });
   }
-  if (elements.appendSampleCsvBtn) {
-    elements.appendSampleCsvBtn.addEventListener('click', loadAppendSampleCsv);
+  if (elements.clearWbBtn) {
+    elements.clearWbBtn.addEventListener('click', clearWorkbookSelection);
   }
-  if (elements.appendDropCsv) {
-    elements.appendDropCsv.addEventListener('dragover', e => { e.preventDefault(); elements.appendDropCsv.classList.add('dragover'); });
-    elements.appendDropCsv.addEventListener('dragleave', () => elements.appendDropCsv.classList.remove('dragover'));
-    elements.appendDropCsv.addEventListener('drop', e => {
+  if (elements.loadSampleWbBtn) {
+    elements.loadSampleWbBtn.addEventListener('click', loadSampleWorkbook);
+  }
+  if (elements.dropZoneWb) {
+    elements.dropZoneWb.addEventListener('dragover', e => { e.preventDefault(); elements.dropZoneWb.classList.add('dragover'); });
+    elements.dropZoneWb.addEventListener('dragleave', () => elements.dropZoneWb.classList.remove('dragover'));
+    elements.dropZoneWb.addEventListener('drop', e => {
       e.preventDefault();
-      elements.appendDropCsv.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) handleAppendBaseCsv(e.dataTransfer.files[0]);
+      elements.dropZoneWb.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) handleWorkbookUpload(e.dataTransfer.files[0]);
     });
   }
 
-  if (elements.appendBrowseFolderBtn && elements.appendFolderInput) {
-    elements.appendBrowseFolderBtn.addEventListener('click', () => elements.appendFolderInput.click());
-    elements.appendFolderInput.addEventListener('change', e => {
-      if (e.target.files.length > 0) handleAppendModelFolder(e.target.files);
+  // Chart Category Filter Bulk Buttons
+  if (elements.catFilterAllBtn) {
+    elements.catFilterAllBtn.addEventListener('click', () => {
+      const catSet = new Set();
+      state.scenarios.forEach(sc => {
+        if (sc.categoryMap) Object.keys(sc.categoryMap).forEach(c => catSet.add(c));
+      });
+      state.visibleCategories = catSet;
+      renderCategoryFilterChips();
+      updateDashboard();
     });
   }
-  if (elements.appendBrowseFilesBtn && elements.appendFilesInput) {
-    elements.appendBrowseFilesBtn.addEventListener('click', () => elements.appendFilesInput.click());
-    elements.appendFilesInput.addEventListener('change', e => {
-      if (e.target.files.length > 0) handleAppendModelFolder(e.target.files);
-    });
-  }
-  if (elements.appendSampleFolderBtn) {
-    elements.appendSampleFolderBtn.addEventListener('click', loadAppendSampleFolder);
-  }
-  if (elements.appendDropFolder) {
-    elements.appendDropFolder.addEventListener('dragover', e => { e.preventDefault(); elements.appendDropFolder.classList.add('dragover'); });
-    elements.appendDropFolder.addEventListener('dragleave', () => elements.appendDropFolder.classList.remove('dragover'));
-    elements.appendDropFolder.addEventListener('drop', e => {
-      e.preventDefault();
-      elements.appendDropFolder.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) handleAppendModelFolder(e.dataTransfer.files);
+  if (elements.catFilterNoneBtn) {
+    elements.catFilterNoneBtn.addEventListener('click', () => {
+      state.visibleCategories = new Set();
+      renderCategoryFilterChips();
+      updateDashboard();
     });
   }
 
-  if (elements.executeLoadDashboardBtn) {
-    elements.executeLoadDashboardBtn.addEventListener('click', executeLoadDashboard);
-  }
-
-  // Method 3 Checklist Bulk Actions
+  // Method 3 / Append Section Actions
   if (elements.appendSelectAllBtn) {
     elements.appendSelectAllBtn.addEventListener('click', () => {
       if (elements.appendScenarioChecklist) {
@@ -2728,48 +3179,68 @@ function setupEventListeners() {
   }
 
   // Scenario Bulk Actions
-  elements.selectAllScenariosBtn.addEventListener('click', () => {
-    state.selectedScenarios = state.scenarios.map(s => s.scenarioName);
-    renderScenariosPills(); updateDashboard();
-  });
-  elements.deselectAllScenariosBtn.addEventListener('click', () => {
-    state.selectedScenarios = [state.scenarios[0].scenarioName];
-    renderScenariosPills(); updateDashboard();
-  });
+  if (elements.selectAllScenariosBtn) {
+    elements.selectAllScenariosBtn.addEventListener('click', () => {
+      state.selectedScenarios = state.scenarios.map(s => s.scenarioName);
+      renderScenariosPills(); updateDashboard();
+    });
+  }
+  if (elements.deselectAllScenariosBtn) {
+    elements.deselectAllScenariosBtn.addEventListener('click', () => {
+      state.selectedScenarios = [state.scenarios[0].scenarioName];
+      renderScenariosPills(); updateDashboard();
+    });
+  }
 
   // View Mode
-  elements.viewModeControl.querySelectorAll('.seg-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      elements.viewModeControl.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.viewMode = btn.dataset.value;
-      updateDashboard();
+  if (elements.viewModeControl) {
+    elements.viewModeControl.querySelectorAll('.seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        elements.viewModeControl.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.viewMode = btn.dataset.value;
+        updateDashboard();
+      });
     });
-  });
+  }
 
   // Unit
-  elements.unitControl.querySelectorAll('.seg-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      elements.unitControl.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.energyUnit = btn.dataset.unit;
-      updateDashboard();
+  if (elements.unitControl) {
+    elements.unitControl.querySelectorAll('.seg-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        elements.unitControl.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.energyUnit = btn.dataset.unit;
+        updateDashboard();
+      });
     });
-  });
+  }
 
   // Chart Type
-  elements.chartTypeSelect.addEventListener('change', e => { state.chartType = e.target.value; updateDashboard(); });
+  if (elements.chartTypeSelect) {
+    elements.chartTypeSelect.addEventListener('change', e => { state.chartType = e.target.value; updateDashboard(); });
+  }
 
   // Scenario Selectors
-  elements.singleScenarioSelect.addEventListener('change', e => { state.activeScenario = e.target.value; updateDashboard(); });
-  elements.baselineScenarioSelect.addEventListener('change', e => { state.baselineScenario = e.target.value; updateDashboard(); });
+  if (elements.singleScenarioSelect) {
+    elements.singleScenarioSelect.addEventListener('change', e => { state.activeScenario = e.target.value; updateDashboard(); });
+  }
+  if (elements.baselineScenarioSelect) {
+    elements.baselineScenarioSelect.addEventListener('change', e => { state.baselineScenario = e.target.value; updateDashboard(); });
+  }
 
   // Options
-  elements.cleanLabelsToggle.addEventListener('change', e => { state.cleanLabels = e.target.checked; updateDashboard(); });
-  elements.hideZeroesToggle.addEventListener('change', e => { state.hideZeroes = e.target.checked; updateDashboard(); });
+  if (elements.cleanLabelsToggle) {
+    elements.cleanLabelsToggle.addEventListener('change', e => { state.cleanLabels = e.target.checked; updateDashboard(); });
+  }
+  if (elements.hideZeroesToggle) {
+    elements.hideZeroesToggle.addEventListener('change', e => { state.hideZeroes = e.target.checked; updateDashboard(); });
+  }
 
   // Export Buttons
-  elements.copyExcelBtn.addEventListener('click', copyTableToExcel);
+  if (elements.copyExcelBtn) {
+    elements.copyExcelBtn.addEventListener('click', copyTableToExcel);
+  }
   if (elements.exportExcelBtn) {
     elements.exportExcelBtn.addEventListener('click', exportExcelWorkbook);
   }
@@ -2779,7 +3250,9 @@ function setupEventListeners() {
   if (elements.csvBrowseFolderBtn) {
     elements.csvBrowseFolderBtn.addEventListener('click', browseFolderForExport);
   }
-  elements.downloadChartBtn.addEventListener('click', downloadChartImage);
+  if (elements.downloadChartBtn) {
+    elements.downloadChartBtn.addEventListener('click', downloadChartImage);
+  }
 
   // Top-Level Navigation Tabs (Compliance Results vs Model QC)
   setupTopLevelNavigation();
