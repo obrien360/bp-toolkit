@@ -257,32 +257,10 @@ body {
   flex-shrink: 0;
 }
 
-.status-chip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  font-size: 0.78rem;
-  font-weight: 600;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
-}
-
 .status-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-}
-
-.status-chip.online .status-dot {
-  background-color: var(--ob360-green);
-  box-shadow: 0 0 6px var(--ob360-green);
-}
-
-.status-chip.offline .status-dot {
-  background-color: var(--ob360-blue);
 }
 
 /* ==========================================================================
@@ -345,13 +323,13 @@ body.dark-theme .quick-tips strong {
 }
 
 /* ==========================================================================
-   Section 1: Select Model Run Folder & Workbooks (1-Row, 4-Selections Grid)
+   Section 1: Required Results Inputs and EUI Comparison Files
    ========================================================================== */
 
 .source-selection-grid {
   display: grid;
-  grid-template-columns: 1fr auto 1fr 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
   align-items: stretch;
   margin-bottom: 16px;
 }
@@ -362,24 +340,72 @@ body.dark-theme .quick-tips strong {
   }
 }
 
+.source-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.source-group-label {
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.source-group-label span {
+  font-size: 0.67rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.source-group-items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.source-group-items-required {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
 .and-or-connector {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 2px;
+  padding: 0 1px;
 }
 
 .and-or-pill {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
-  font-size: 0.72rem;
+  font-size: 0.58rem;
   font-weight: 700;
-  padding: 6px 8px;
+  padding: 3px 5px;
   border-radius: var(--radius-full);
   white-space: nowrap;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 700px) {
+  .source-group-items,
+  .source-group-items-required {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .and-or-connector {
+    padding: 0;
+  }
 }
 
 .selection-slot {
@@ -562,7 +588,7 @@ body.dark-theme .slot-badge {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 8px;
-  max-height: 280px;
+  max-height: 187px;
   overflow-y: auto;
 }
 
@@ -657,77 +683,7 @@ body.dark-theme .fuel-badge.gas {
   font-size: 0.72rem;
 }
 
-/* ==========================================================================
-   Chart Category Filter Bar
-   ========================================================================== */
-
-.chart-category-filter-bar {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.filter-bar-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.filter-bar-label {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.filter-bar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.category-filter-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.cat-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid var(--border-color);
-  background: var(--bg-surface);
-  color: var(--text-secondary);
-  user-select: none;
-  transition: all var(--transition-fast);
-}
-
-.cat-chip:hover {
-  border-color: var(--ob360-green);
-  color: var(--text-primary);
-}
-
-.cat-chip.active {
-  background: var(--ob360-purple);
-  color: #ffffff;
-  border-color: var(--ob360-purple);
-}
-
-body.dark-theme .cat-chip.active {
-  background: var(--ob360-teal);
-  color: #1a1a2e;
-  border-color: var(--ob360-teal);
-}
+.drop-box {
   padding: 28px 20px;
   border-radius: var(--radius-md);
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
@@ -1112,6 +1068,87 @@ body.dark-theme .scenario-pill.pill-avg.active .pill-check {
   background: #4D76AD;
 }
 
+.scenario-selection-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.scenario-selection-title {
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.scenario-select-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.scenario-select {
+  min-width: 150px;
+  max-width: 260px;
+  padding: 6px 26px 6px 9px;
+  font-size: 0.82rem;
+}
+
+.multi-case-details {
+  position: relative;
+  min-width: 180px;
+  max-width: min(460px, 100%);
+  color: var(--text-primary);
+}
+
+.multi-case-details summary {
+  overflow: hidden;
+  max-width: 420px;
+  padding: 6px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  cursor: pointer;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-case-options {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  display: grid;
+  gap: 4px;
+  min-width: 100%;
+  max-height: 260px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+
+.multi-case-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px;
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.multi-case-option input {
+  margin: 0;
+}
+
 .pill-tag {
   display: inline-block;
   padding: 1px 6px;
@@ -1324,29 +1361,39 @@ body.dark-theme .seg-btn.active {
   gap: 5px;
 }
 
+.end-use-category-control {
+  margin-left: auto;
+}
+
+.end-use-category-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.category-filter-details {
+  width: 220px;
+  min-width: 0;
+}
+
+.category-filter-details summary {
+  max-width: none;
+}
+
+.category-filter-options {
+  width: 100%;
+}
+
+.end-use-category-controls .custom-checkbox {
+  white-space: nowrap;
+}
+
 .control-label {
   font-size: 0.74rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-secondary);
-}
-
-.options-strip {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border-color);
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.checkbox-group {
-  display: flex;
-  align-items: center;
-  gap: 16px;
 }
 
 .custom-checkbox {

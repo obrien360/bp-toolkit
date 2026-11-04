@@ -74,10 +74,6 @@
       </nav>
 
       <div class="header-actions">
-        <div id="server-status" class="status-chip offline" title="Server Status">
-          <span class="status-dot"></span>
-          <span class="status-text">Browser Mode</span>
-        </div>
         <button id="theme-toggle-btn" class="btn-icon" title="Toggle Light/Dark Theme">
           <span id="theme-icon">🌙</span>
         </button>
@@ -89,104 +85,106 @@
 
     <!-- View 1: Simulation Results Container -->
     <div id="compliance-view" class="view-container active">
-      <!-- Ingestion Section: Select Model Run Folder & Workbooks (1 Row, 4 Selections) -->
+      <!-- Ingestion Section: Select Model Run Folder & Files (1 Row, 4 Selections) -->
       <section class="card source-card">
         <div class="card-header">
           <div class="card-title-group">
-            <span class="card-step-badge">1</span>
-            <h2>Select Model Run Folder &amp; Workbooks</h2>
+            <h2>Select Model Run Folder &amp; Files</h2>
           </div>
           <div class="quick-tips">
             <span>Target Scenarios: <strong>ab1, ab2, ab3, ab4, ap</strong></span>
           </div>
         </div>
 
-        <!-- 4 Selections in 1 Row -->
+        <!-- Required inputs and optional EUI comparison files -->
         <div class="source-selection-grid">
-          <!-- Selection 1: Results CSV -->
-          <div class="selection-slot" id="slot-csv">
-            <div class="slot-header">
-              <span class="slot-badge">1</span>
-              <h4>Results CSV</h4>
-              <button type="button" class="slot-clear-btn hidden" id="clear-csv-btn" title="Clear Results CSV">×</button>
-            </div>
-            <div class="compact-drop-zone" id="drop-zone-csv">
-              <input type="file" id="browser-csv-input" accept=".csv" class="hidden-file-input" />
-              <div class="compact-drop-content">
-                <div class="compact-drop-icon">📊</div>
-                <div class="compact-drop-label" id="csv-status-label">Drop CSV or choose</div>
-                <div class="compact-slot-actions">
-                  <button type="button" id="browse-csv-btn" class="btn btn-sm btn-primary">Browse CSV</button>
-                  <button type="button" id="load-sample-csv-btn" class="btn btn-sm btn-outline"
-                    title="Load sample example_project_folder - Results.csv">Sample</button>
+          <div class="source-group source-group-required">
+            <div class="source-group-label">Required for Results <span>(select either or both)</span></div>
+            <div class="source-group-items source-group-items-required">
+              <!-- Selection 1: Results CSV -->
+              <div class="selection-slot" id="slot-csv">
+                <div class="slot-header">
+                  <h4>Results CSV</h4>
+                  <button type="button" class="slot-clear-btn hidden" id="clear-csv-btn" title="Clear Results CSV">×</button>
+                </div>
+                <div class="compact-drop-zone" id="drop-zone-csv">
+                  <input type="file" id="browser-csv-input" accept=".csv" class="hidden-file-input" />
+                  <div class="compact-drop-content">
+                    <div class="compact-drop-icon">📊</div>
+                    <div class="compact-drop-label" id="csv-status-label">Drop CSV or choose</div>
+                    <div class="compact-slot-actions">
+                      <button type="button" id="browse-csv-btn" class="btn btn-sm btn-primary">Browse CSV</button>
+                      <button type="button" id="load-sample-csv-btn" class="btn btn-sm btn-outline"
+                        title="Load sample example_project_folder - Results.csv">Sample</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="and-or-connector" aria-label="and or">
+                <span class="and-or-pill">AND / OR</span>
+              </div>
+
+              <!-- Selection 2: Model Run Folder -->
+              <div class="selection-slot" id="slot-folder">
+                <div class="slot-header">
+                  <h4>Model Run Folder</h4>
+                  <button type="button" class="slot-clear-btn hidden" id="clear-folder-btn" title="Clear Model Run Folder">×</button>
+                </div>
+                <div class="compact-drop-zone" id="drop-zone-folder">
+                  <input type="file" id="browser-folder-input" webkitdirectory directory multiple class="hidden-file-input" />
+                  <div class="compact-drop-content">
+                    <div class="compact-drop-icon">📁</div>
+                    <div class="compact-drop-label" id="folder-status-label">Drop model run folder</div>
+                    <div class="compact-slot-actions">
+                      <button type="button" id="browse-folder-btn" class="btn btn-sm btn-primary">Browse Folder</button>
+                      <button type="button" id="load-sample-folder-btn" class="btn btn-sm btn-outline"
+                        title="Load sample example_project_folder">Sample</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- Connector: AND / OR -->
-          <div class="and-or-connector">
-            <span class="and-or-pill">AND / OR</span>
-          </div>
-
-          <!-- Selection 2: Model Run Folder -->
-          <div class="selection-slot" id="slot-folder">
-            <div class="slot-header">
-              <span class="slot-badge">2</span>
-              <h4>Model Run Folder</h4>
-              <button type="button" class="slot-clear-btn hidden" id="clear-folder-btn" title="Clear Model Run Folder">×</button>
-            </div>
-            <div class="compact-drop-zone" id="drop-zone-folder">
-              <input type="file" id="browser-folder-input" webkitdirectory directory multiple class="hidden-file-input" />
-              <input type="file" id="browser-files-input" multiple accept=".htm,.html" class="hidden-file-input" />
-              <div class="compact-drop-content">
-                <div class="compact-drop-icon">📁</div>
-                <div class="compact-drop-label" id="folder-status-label">Drop folder or files</div>
-                <div class="compact-slot-actions">
-                  <button type="button" id="browse-folder-btn" class="btn btn-sm btn-primary">Browse Folder</button>
-                  <button type="button" id="browse-files-btn" class="btn btn-sm btn-outline">Files</button>
-                  <button type="button" id="load-sample-folder-btn" class="btn btn-sm btn-outline"
-                    title="Load sample example_project_folder">Sample</button>
+          <div class="source-group source-group-eui">
+            <div class="source-group-label">For EUI Comparison</div>
+            <div class="source-group-items source-group-items-eui">
+              <!-- Selection 3: CBECC Model Workbook -->
+              <div class="selection-slot" id="slot-cbecc-wb">
+                <div class="slot-header">
+                  <h4>CBECC Model Workbook</h4>
+                  <button type="button" class="slot-clear-btn hidden" id="clear-wb-btn" title="Clear Workbook">×</button>
+                </div>
+                <div class="compact-drop-zone" id="drop-zone-wb">
+                  <input type="file" id="browser-wb-input" accept=".xlsm,.xlsx" class="hidden-file-input" />
+                  <div class="compact-drop-content">
+                    <div class="compact-drop-icon">📗</div>
+                    <div class="compact-drop-label" id="wb-status-label">CBECC Model Workbook (.xlsm)</div>
+                    <div class="compact-slot-actions">
+                      <button type="button" id="browse-wb-btn" class="btn btn-sm btn-primary">Browse .xlsm</button>
+                      <button type="button" id="load-sample-wb-btn" class="btn btn-sm btn-outline"
+                        title="Load sample CBECC Model Workbook - example2.xlsm">Sample</button>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <!-- Selection 3: CBECC Model Workbook -->
-          <div class="selection-slot" id="slot-cbecc-wb">
-            <div class="slot-header">
-              <span class="slot-badge">3</span>
-              <h4>CBECC Model Workbook</h4>
-              <button type="button" class="slot-clear-btn hidden" id="clear-wb-btn" title="Clear Workbook">×</button>
-            </div>
-            <div class="compact-drop-zone" id="drop-zone-wb">
-              <input type="file" id="browser-wb-input" accept=".xlsm,.xlsx" class="hidden-file-input" />
-              <div class="compact-drop-content">
-                <div class="compact-drop-icon">📗</div>
-                <div class="compact-drop-label" id="wb-status-label">QC &amp; Comparison (.xlsm)</div>
-                <div class="compact-slot-actions">
-                  <button type="button" id="browse-wb-btn" class="btn btn-sm btn-primary">Browse .xlsm</button>
-                  <button type="button" id="load-sample-wb-btn" class="btn btn-sm btn-outline"
-                    title="Load sample CBECC Model Workbook - example2.xlsm">Sample</button>
+              <!-- Selection 4: EUI Comparison Workbook (Placeholder) -->
+              <div class="selection-slot slot-disabled" id="slot-eui-comp">
+                <div class="slot-header">
+                  <h4>EUI Comparison Workbook</h4>
+                  <span class="badge badge-subtle">Placeholder</span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Selection 4: EUI Comparison Workbook (Placeholder) -->
-          <div class="selection-slot slot-disabled" id="slot-eui-comp">
-            <div class="slot-header">
-              <span class="slot-badge">4</span>
-              <h4>EUI Comparison Workbook</h4>
-              <span class="badge badge-subtle">Placeholder</span>
-            </div>
-            <div class="compact-drop-zone disabled-zone">
-              <div class="compact-drop-content">
-                <div class="compact-drop-icon">📈</div>
-                <div class="compact-drop-label">Historical Projects Data</div>
-                <div class="compact-slot-actions">
-                  <button type="button" class="btn btn-sm btn-outline" disabled
-                    title="Compare EUI by category with previous projects (Next update)">Coming Soon</button>
+                <div class="compact-drop-zone disabled-zone">
+                  <div class="compact-drop-content">
+                    <div class="compact-drop-icon">📈</div>
+                    <div class="compact-drop-label">Historical Projects Data</div>
+                    <div class="compact-slot-actions">
+                      <button type="button" class="btn btn-sm btn-outline" disabled
+                        title="Compare EUI by category with previous projects (Next update)">Coming Soon</button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -195,28 +193,6 @@
 
         <div id="unmapped-warning" class="unmapped-warning hidden" role="alert"></div>
 
-        <!-- File Badges / Scenarios List -->
-        <div id="scenarios-container" class="scenarios-container hidden">
-          <div class="scenarios-header">
-            <div class="scenarios-summary">
-              <strong>Active Scenarios:</strong>
-              <span id="scenarios-count-badge" class="badge badge-accent">5 Scenarios</span>
-            </div>
-            <div class="scenarios-bulk-actions">
-              <label class="custom-checkbox avg-checkbox-label"
-                title="Calculate and display the average of the 4 baseline scenarios (ab1-ab4)">
-                <input type="checkbox" id="average-baselines-toggle" checked />
-                <span class="checkmark"></span>
-                <span class="avg-label-text">Average Baselines (ab1–ab4)</span>
-              </label>
-              <span class="divider">|</span>
-              <button id="select-all-scenarios-btn" class="btn-link">Select All</button>
-              <span class="divider">|</span>
-              <button id="deselect-all-scenarios-btn" class="btn-link">Reset</button>
-            </div>
-          </div>
-          <div id="scenarios-pill-list" class="scenarios-pill-list"></div>
-        </div>
       </section>
 
       <!-- Main Dashboard Area -->
@@ -225,7 +201,7 @@
         <!-- Section 2: Building Area & Category Mapping -->
         <section class="card scenario-areas-card">
           <div class="card-header">
-            <div class="card-title-group"><span class="card-step-badge">2</span>
+            <div class="card-title-group">
               <h2>Building Area &amp; Category Mapping</h2>
             </div>
             <span class="table-subtitle">Set building area for EUI and customize how non-zero EAp2-4/5 categories map to plot end-uses</span>
@@ -256,30 +232,61 @@
           </div>
         </section>
 
+        <!-- Scenario Selection -->
+        <section id="scenarios-container" class="card scenarios-container hidden" aria-label="Scenario selection">
+          <div id="pair-scenario-controls" class="scenario-selection-row">
+            <strong class="scenario-selection-title">Scenarios</strong>
+            <label class="scenario-select-label" for="baseline-case-select">Baseline
+              <select id="baseline-case-select" class="select-dropdown scenario-select"></select>
+            </label>
+            <label class="scenario-select-label" for="proposed-case-select">Proposed
+              <select id="proposed-case-select" class="select-dropdown scenario-select"></select>
+            </label>
+            <button type="button" id="compare-multiple-btn" class="btn-link">Compare multiple…</button>
+          </div>
+          <div id="multi-scenario-controls" class="scenario-selection-row hidden">
+            <strong class="scenario-selection-title">Scenarios</strong>
+            <label class="scenario-select-label" for="multi-baseline-select">Baseline
+              <select id="multi-baseline-select" class="select-dropdown scenario-select"></select>
+            </label>
+            <details id="multi-case-details" class="multi-case-details">
+              <summary id="multi-case-summary">Select cases</summary>
+              <div id="multi-case-options" class="multi-case-options"></div>
+            </details>
+            <button type="button" id="pair-scenario-btn" class="btn-link">Baseline vs. proposed</button>
+          </div>
+        </section>
+
         <!-- Interactive Controls Toolbar -->
         <section class="card controls-card">
           <div class="controls-toolbar">
 
             <!-- View Mode -->
             <div class="control-group">
-              <label class="control-label">View Mode</label>
-              <div class="segmented-control" id="view-mode-control">
-                <button class="seg-btn active" data-value="compare">Clustered Column</button>
-                <button class="seg-btn" data-value="stacked">Stacked Column</button>
-              </div>
+              <label class="control-label" for="view-mode-select">View Mode</label>
+              <select id="view-mode-select" class="select-dropdown">
+                <option value="compare" selected>Clustered Column</option>
+                <option value="stacked">Stacked Column</option>
+              </select>
             </div>
 
-            <!-- Energy Unit Switcher -->
+            <!-- Energy Source -->
             <div class="control-group">
-              <label class="control-label">Energy Unit</label>
-              <div class="segmented-control unit-control" id="unit-control">
-                <button class="seg-btn active" data-unit="kBtu">kBtu (Total Combined)</button>
-                <button class="seg-btn" data-unit="eui">kBtu/ft2 (Total Combined)</button>
-                <button class="seg-btn" data-unit="eui-elec">kBtu/ft2 (Electricity)</button>
-                <button class="seg-btn" data-unit="eui-gas">kBtu/ft2 (Natural Gas)</button>
-                <button class="seg-btn" data-unit="kWh">kWh (Electricity)</button>
-                <button class="seg-btn" data-unit="therm">therm (Natural Gas)</button>
-              </div>
+              <label class="control-label" for="energy-source-select">Energy Source</label>
+              <select id="energy-source-select" class="select-dropdown">
+                <option value="combined" selected>Combined</option>
+                <option value="electricity">Electricity</option>
+                <option value="natural-gas">Natural Gas</option>
+              </select>
+            </div>
+
+            <!-- Energy Unit -->
+            <div class="control-group">
+              <label class="control-label" for="energy-unit-select">Unit</label>
+              <select id="energy-unit-select" class="select-dropdown">
+                <option value="kBtu">kBtu</option>
+                <option value="eui" selected>kBtu/ft²</option>
+              </select>
             </div>
 
             <!-- Chart Type Selector -->
@@ -293,49 +300,23 @@
               </select>
             </div>
 
-            <!-- Single Scenario / Baseline Selectors -->
-            <div class="control-group hidden" id="single-scenario-group">
-              <label class="control-label">Active Scenario</label>
-              <select id="single-scenario-select" class="select-dropdown"></select>
-            </div>
-
-            <div class="control-group hidden" id="baseline-scenario-group">
-              <label class="control-label">Baseline Reference</label>
-              <select id="baseline-scenario-select" class="select-dropdown"></select>
-            </div>
-
-          </div>
-
-          <!-- Filter & Display Options Strip -->
-          <div class="options-strip">
-            <div class="checkbox-group">
-              <label class="custom-checkbox">
-                <input type="checkbox" id="clean-labels-toggle" checked />
-                <span class="checkmark"></span>
-                Clean Category Names
-              </label>
-              <label class="custom-checkbox">
-                <input type="checkbox" id="hide-zeroes-toggle" checked />
-                <span class="checkmark"></span>
-                Hide Zero Rows (Chart Only)
-              </label>
-            </div>
-          </div>
-
-          <!-- Chart Category Visibility Filter Bar -->
-          <div class="chart-category-filter-bar" id="chart-category-filters">
-            <div class="filter-bar-header">
-              <span class="filter-bar-label">Chart Categories:</span>
-              <div class="filter-bar-actions">
-                <button type="button" id="cat-filter-all-btn" class="btn-link">Select All</button>
-                <span class="divider">|</span>
-                <button type="button" id="cat-filter-none-btn" class="btn-link">Clear</button>
+            <div class="control-group end-use-category-control">
+              <label class="control-label" for="category-filter-summary">End-Use Category</label>
+              <div class="end-use-category-controls">
+                <details class="multi-case-details category-filter-details">
+                  <summary id="category-filter-summary">All categories</summary>
+                  <div class="multi-case-options category-filter-options" id="category-filter-options"></div>
+                </details>
+                <label class="custom-checkbox">
+                  <input type="checkbox" id="hide-zeroes-toggle" checked />
+                  <span class="checkmark"></span>
+                  Hide Zero Rows (Chart Only)
+                </label>
               </div>
             </div>
-            <div class="category-filter-chips" id="category-filter-chips">
-              <!-- Dynamically populated category checkboxes/chips -->
-            </div>
+
           </div>
+
         </section>
 
         <!-- Interactive Chart Section -->
@@ -610,7 +591,7 @@
 
   <script src="qc_module.js?v=1.0"></script>
   <script src="reports_module.js?v=1.0"></script>
-  <script src="app.js?v=2.2"></script>
+  <script src="app.js?v=2.5"></script>
 </body>
 
 </html>

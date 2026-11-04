@@ -50,8 +50,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function initDOMElements() {
-  el.connectionBadge = document.getElementById('connectionBadge');
-  el.connectionBadgeText = document.getElementById('connectionBadgeText');
   el.fileDropzone = document.getElementById('fileDropzone');
   el.fileInput = document.getElementById('fileInput');
   el.sampleSelect = document.getElementById('sampleSelect');
@@ -262,14 +260,6 @@ async function checkServerConnection() {
 
 function setServerMode(isAvailable) {
   state.serverAvailable = isAvailable;
-  if (!el.connectionBadge || !el.connectionBadgeText) return;
-  if (isAvailable) {
-    el.connectionBadge.className = 'status-chip online';
-    el.connectionBadgeText.textContent = 'Server Connected (Active)';
-  } else {
-    el.connectionBadge.className = 'status-chip offline';
-    el.connectionBadgeText.textContent = 'Browser Mode (Active)';
-  }
 }
 
 // -------------------------------------------------------------

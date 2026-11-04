@@ -42,18 +42,37 @@ const CONVERSIONS = {
 
 // Standard Mapped Categories (Default Options in UI)
 const STANDARD_MAPPED_CATEGORIES = [
-  'Space Heating',
-  'Space Cooling',
   'Interior Lighting',
   'Exterior lighting',
-  'Receptacle Equipment',
-  'Elevators and escalators',
-  'Fans-Interior',
-  'Fans-Parking Garage',
+  'Space Heating',
+  'Space Cooling',
   'Pumps',
   'Heat Rejection',
-  'Service Water Heating'
+  'Fans-Interior',
+  'Fans-Parking Garage',
+  'Service Water Heating',
+  'Receptacle Equipment',
+  'Elevators and escalators'
 ];
+
+const END_USE_CATEGORY_ORDER = new Map(
+  STANDARD_MAPPED_CATEGORIES.map((category, index) => [category.toLowerCase(), index])
+);
+
+function compareEndUseCategories(a, b) {
+  const indexA = END_USE_CATEGORY_ORDER.get(a.toLowerCase());
+  const indexB = END_USE_CATEGORY_ORDER.get(b.toLowerCase());
+  if (indexA !== undefined || indexB !== undefined) {
+    if (indexA === undefined) return 1;
+    if (indexB === undefined) return -1;
+    if (indexA !== indexB) return indexA - indexB;
+  }
+  return a.localeCompare(b);
+}
+
+function sortEndUseCategories(categories) {
+  return categories.sort(compareEndUseCategories);
+}
 
 // O'Brien360 Official Brand Palette
 const SCENARIO_COLORS = {
@@ -590,14 +609,15 @@ const state = {
 
   categoryMapping: {},       // { [rawCat___fuel]: { userCategory, locked, rawCategory, fuel, source } }
   visibleCategories: new Set(), // Set of active mapped categories to display in chart
+  knownCategoryFilters: new Set(),
 
   rawScenarios: [],          // Original parsed scenarios from folder
   scenarios: [],             // All display scenarios (including Baseline Avg if enabled)
   baselineAvgScenario: null, // Computed Baseline Avg scenario
   selectedScenarios: [],     // Array of active scenario names
-  activeScenario: null,      // Single scenario name when in single view
   baselineScenario: null,    // Baseline scenario name for variance calculations
-  averageBaselines: true,    // Calculate and display average of ab1-ab4 (default true)
+  proposedScenario: null,
+  scenarioSelectionMode: 'pair',
   selectedFolderName: '',    // Current project folder name
   buildingAreaType: 'conditioned',
   buildingArea: 0,
@@ -608,10 +628,10 @@ const state = {
   isAppendedData: false,     // True if currently displaying appended data
 
   viewMode: 'compare',       // 'compare' | 'stacked'
-  energyUnit: 'kBtu',        // 'kBtu' | 'eui' | 'eui-elec' | 'eui-gas' | 'kWh' | 'therm'
+  energySource: 'combined',  // 'combined' | 'electricity' | 'natural-gas'
+  energyUnit: 'eui',         // 'kBtu' | 'eui' | 'eui-elec' | 'eui-gas' | 'kWh' | 'therm'
   chartType: 'bar',          // 'bar' | 'stacked-bar' | 'doughnut' | 'horizontalBar' | 'radar'
 
-  cleanLabels: true,         // Strip redundant suffixes
   hideZeroes: true,          // Hide zero rows (chart only)
 
   chartInstance: null,
@@ -625,7 +645,6 @@ const state = {
 const elements = {
   themeToggleBtn: document.getElementById('theme-toggle-btn'),
   themeIcon: document.getElementById('theme-icon'),
-  serverStatus: document.getElementById('server-status'),
 
   // Selection 1: Results CSV
   slotCsv: document.getElementById('slot-csv'),
@@ -640,9 +659,7 @@ const elements = {
   slotFolder: document.getElementById('slot-folder'),
   dropZoneFolder: document.getElementById('drop-zone-folder'),
   browserFolderInput: document.getElementById('browser-folder-input'),
-  browserFilesInput: document.getElementById('browser-files-input'),
   browseFolderBtn: document.getElementById('browse-folder-btn'),
-  browseFilesBtn: document.getElementById('browse-files-btn'),
   loadSampleFolderBtn: document.getElementById('load-sample-folder-btn'),
   folderStatusLabel: document.getElementById('folder-status-label'),
   clearFolderBtn: document.getElementById('clear-folder-btn'),
@@ -665,31 +682,29 @@ const elements = {
   mappingStatusHint: document.getElementById('mapping-status-hint'),
 
   scenariosContainer: document.getElementById('scenarios-container'),
-  scenariosCountBadge: document.getElementById('scenarios-count-badge'),
-  scenariosPillList: document.getElementById('scenarios-pill-list'),
-  averageBaselinesToggle: document.getElementById('average-baselines-toggle'),
-  selectAllScenariosBtn: document.getElementById('select-all-scenarios-btn'),
-  deselectAllScenariosBtn: document.getElementById('deselect-all-scenarios-btn'),
+  pairScenarioControls: document.getElementById('pair-scenario-controls'),
+  baselineCaseSelect: document.getElementById('baseline-case-select'),
+  proposedCaseSelect: document.getElementById('proposed-case-select'),
+  compareMultipleBtn: document.getElementById('compare-multiple-btn'),
+  multiScenarioControls: document.getElementById('multi-scenario-controls'),
+  multiBaselineSelect: document.getElementById('multi-baseline-select'),
+  multiCaseDetails: document.getElementById('multi-case-details'),
+  multiCaseSummary: document.getElementById('multi-case-summary'),
+  multiCaseOptions: document.getElementById('multi-case-options'),
+  pairScenarioBtn: document.getElementById('pair-scenario-btn'),
 
   dashboardArea: document.getElementById('dashboard-area'),
 
-  viewModeControl: document.getElementById('view-mode-control'),
-  unitControl: document.getElementById('unit-control'),
+  viewModeSelect: document.getElementById('view-mode-select'),
+  energySourceSelect: document.getElementById('energy-source-select'),
+  energyUnitSelect: document.getElementById('energy-unit-select'),
   chartTypeSelect: document.getElementById('chart-type-select'),
 
-  singleScenarioGroup: document.getElementById('single-scenario-group'),
-  singleScenarioSelect: document.getElementById('single-scenario-select'),
-  baselineScenarioGroup: document.getElementById('baseline-scenario-group'),
-  baselineScenarioSelect: document.getElementById('baseline-scenario-select'),
-
-  cleanLabelsToggle: document.getElementById('clean-labels-toggle'),
   hideZeroesToggle: document.getElementById('hide-zeroes-toggle'),
 
   // Chart Category Filter Controls
-  chartCategoryFilters: document.getElementById('chart-category-filters'),
-  catFilterAllBtn: document.getElementById('cat-filter-all-btn'),
-  catFilterNoneBtn: document.getElementById('cat-filter-none-btn'),
-  categoryFilterChips: document.getElementById('category-filter-chips'),
+  categoryFilterOptions: document.getElementById('category-filter-options'),
+  categoryFilterSummary: document.getElementById('category-filter-summary'),
 
   // Metric elements (guarded for backward compatibility)
   metricTotalEnergy: document.getElementById('metric-total-energy'),
@@ -913,6 +928,21 @@ function getCategoryEnergyValue(catData, unit = state.energyUnit) {
   if (unit === 'therm') return catData.gasTherm;
   return catData.totalKbtu;
 }
+
+const ENERGY_UNITS_BY_SOURCE = {
+  combined: [
+    { value: 'kBtu', label: 'kBtu' },
+    { value: 'eui', label: 'kBtu/ft²' },
+  ],
+  electricity: [
+    { value: 'kWh', label: 'kWh' },
+    { value: 'eui-elec', label: 'kBtu/ft²' },
+  ],
+  'natural-gas': [
+    { value: 'therm', label: 'therm' },
+    { value: 'eui-gas', label: 'kBtu/ft²' },
+  ],
+};
 
 function getDisplayUnitLabel() {
   if (state.energyUnit === 'eui') return 'kBtu/ft2 (Total Combined)';
@@ -1269,7 +1299,7 @@ function syncCategoryMappings(scenarios, isCsvSource = false) {
 
   recomputeAllScenarioCategories();
   renderCategoryMappingUI();
-  renderCategoryFilterChips();
+  renderCategoryFilterOptions();
 }
 
 function recomputeAllScenarioCategories() {
@@ -1311,12 +1341,13 @@ function renderCategoryMappingUI() {
     return;
   }
 
-  // Sort keys: electricity first, then natural gas, then alphabetical by rawCategory
+  // Sort keys: electricity first, then natural gas, then by raw category.
   keys.sort((a, b) => {
     const ruleA = state.categoryMapping[a];
     const ruleB = state.categoryMapping[b];
     if (ruleA.fuel !== ruleB.fuel) return ruleA.fuel === 'elec' ? -1 : 1;
-    return ruleA.rawCategory.localeCompare(ruleB.rawCategory);
+    return compareEndUseCategories(ruleA.userCategory, ruleB.userCategory) ||
+      ruleA.rawCategory.localeCompare(ruleB.rawCategory);
   });
 
   let html = '';
@@ -1374,8 +1405,8 @@ function renderCategoryMappingUI() {
   });
 }
 
-function renderCategoryFilterChips() {
-  const container = document.getElementById('category-filter-chips');
+function renderCategoryFilterOptions() {
+  const container = elements.categoryFilterOptions;
   if (!container) return;
 
   const catSet = new Set();
@@ -1385,34 +1416,42 @@ function renderCategoryFilterChips() {
     }
   });
 
-  const allCats = Array.from(catSet).sort();
+  const allCats = sortEndUseCategories(Array.from(catSet));
+  allCats.forEach(cat => {
+    if (!state.knownCategoryFilters.has(cat)) {
+      state.visibleCategories.add(cat);
+      state.knownCategoryFilters.add(cat);
+    }
+  });
+
   if (allCats.length === 0) {
-    container.innerHTML = '<span class="text-muted" style="font-size:0.76rem;">No categories available</span>';
+    container.replaceChildren();
+    elements.categoryFilterSummary.textContent = 'No categories available';
     return;
   }
 
-  if (!state.visibleCategories || state.visibleCategories.size === 0) {
-    state.visibleCategories = new Set(allCats);
-  }
-
-  container.innerHTML = allCats.map(cat => {
-    const isActive = state.visibleCategories.has(cat);
-    return `<button type="button" class="cat-chip ${isActive ? 'active' : ''}" data-cat="${cat}">${cat}</button>`;
-  }).join('');
-
-  container.querySelectorAll('.cat-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const cat = chip.getAttribute('data-cat');
-      if (state.visibleCategories.has(cat)) {
-        state.visibleCategories.delete(cat);
-        chip.classList.remove('active');
-      } else {
-        state.visibleCategories.add(cat);
-        chip.classList.add('active');
-      }
+  container.replaceChildren(...allCats.map(cat => {
+    const option = document.createElement('label');
+    option.className = 'multi-case-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = state.visibleCategories.has(cat);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) state.visibleCategories.add(cat);
+      else state.visibleCategories.delete(cat);
+      renderCategoryFilterOptions();
       updateDashboard();
     });
-  });
+    option.append(checkbox, document.createTextNode(cat));
+    return option;
+  }));
+
+  const selectedCats = allCats.filter(cat => state.visibleCategories.has(cat));
+  elements.categoryFilterSummary.textContent = selectedCats.length === allCats.length
+    ? 'All categories'
+    : selectedCats.length
+      ? selectedCats.join(', ')
+      : 'No categories selected';
 }
 
 // =============================================================================
@@ -1551,7 +1590,7 @@ async function handleWorkbookUpload(file) {
 function clearWorkbookSelection() {
   state.loadedWorkbook = null;
   if (elements.slotCbeccWb) elements.slotCbeccWb.classList.remove('active-loaded');
-  if (elements.wbStatusLabel) elements.wbStatusLabel.textContent = 'QC & Comparison (.xlsm)';
+  if (elements.wbStatusLabel) elements.wbStatusLabel.textContent = 'CBECC Model Workbook (.xlsm)';
   if (elements.clearWbBtn) elements.clearWbBtn.classList.add('hidden');
   if (elements.browserWbInput) elements.browserWbInput.value = '';
   showToast('Workbook Cleared', 'Removed loaded CBECC Model Workbook', 'ℹ️');
@@ -1573,6 +1612,74 @@ async function loadSampleWorkbook() {
 // =============================================================================
 // Method 2: Extract from Model Folder (HTM Files)
 // =============================================================================
+
+async function collectDroppedFiles(dataTransfer) {
+  const items = Array.from(dataTransfer.items || []);
+  const handles = await Promise.all(items.map(item =>
+    typeof item.getAsFileSystemHandle === 'function' ? item.getAsFileSystemHandle() : null
+  ));
+
+  const files = [];
+  function addFile(file, relativePath) {
+    Object.defineProperty(file, 'webkitRelativePath', { value: relativePath, configurable: true });
+    files.push(file);
+  }
+
+  async function collectHandle(handle, parentPath = '') {
+    const relativePath = parentPath ? `${parentPath}/${handle.name}` : handle.name;
+
+    if (handle.kind === 'file') {
+      addFile(await handle.getFile(), relativePath);
+      return;
+    }
+
+    for await (const [, child] of handle.entries()) {
+      await collectHandle(child, relativePath);
+    }
+  }
+
+  if (handles.some(Boolean)) {
+    for (const handle of handles) {
+      if (handle) await collectHandle(handle);
+    }
+    return files;
+  }
+
+  const entries = items
+    .map(item => typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null)
+    .filter(Boolean);
+
+  if (entries.length === 0) return Array.from(dataTransfer.files || []);
+
+  async function collectEntry(entry, parentPath = '') {
+    const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
+
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      addFile(file, relativePath);
+      return;
+    }
+
+    if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const children = [];
+      let batch;
+      do {
+        batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        children.push(...batch);
+      } while (batch.length > 0);
+
+      for (const child of children) {
+        await collectEntry(child, relativePath);
+      }
+    }
+  }
+
+  for (const entry of entries) {
+    await collectEntry(entry);
+  }
+  return files;
+}
 
 async function handleFileList(files) {
   const htmFiles = Array.from(files).filter(f => f.name.endsWith('.htm') || f.name.endsWith('.html'));
@@ -1677,10 +1784,9 @@ function clearFolderSelection() {
   state.rawScenarios = [];
 
   if (elements.slotFolder) elements.slotFolder.classList.remove('active-loaded');
-  if (elements.folderStatusLabel) elements.folderStatusLabel.textContent = 'Drop folder or choose';
+  if (elements.folderStatusLabel) elements.folderStatusLabel.textContent = 'Drop model run folder';
   if (elements.clearFolderBtn) elements.clearFolderBtn.classList.add('hidden');
   if (elements.browserFolderInput) elements.browserFolderInput.value = '';
-  if (elements.browserFilesInput) elements.browserFilesInput.value = '';
 
   if (state.loadedCsv && state.loadedCsv.scenarios && state.loadedCsv.scenarios.length > 0) {
     state.activeIngestionMethod = 1;
@@ -1764,7 +1870,7 @@ async function loadExampleDataInBrowser() {
     }
   } catch (err) {
     console.warn('Could not auto-fetch example files:', err);
-    showToast('Browser Mode', 'Drag & drop or select your CBECC output files or folder to begin', 'ℹ️');
+    showToast('Select Files', 'Drag & drop or select your CBECC output files or folder to begin', 'ℹ️');
   }
 }
 
@@ -2105,13 +2211,17 @@ function renderScenarioAreas() {
   if (!elements.scenarioAreas) return;
   elements.scenarioAreas.innerHTML = `
     <div class="scenario-area-field"><label for="building-area-type">Area Basis</label><select id="building-area-type" class="select-dropdown"><option value="total" ${state.buildingAreaType === 'total' ? 'selected' : ''}>Total Building Area</option><option value="conditioned" ${state.buildingAreaType === 'conditioned' ? 'selected' : ''}>Net Conditioned Building Area</option></select></div>
-    <div class="scenario-area-field"><label for="building-area-value">Building Area (ft2)</label><input id="building-area-value" type="number" min="0" step="0.01" data-area="buildingArea" value="${state.buildingArea || ''}"></div>`;
+    <div class="scenario-area-field"><label for="building-area-value">Building Area (ft2)</label><input id="building-area-value" type="text" inputmode="decimal" data-area="buildingArea" value="${state.buildingArea ? formatNum(state.buildingArea) : ''}"></div>`;
   elements.scenarioAreas.querySelectorAll('input[data-area]').forEach(input => {
     input.addEventListener('input', event => {
       const property = event.target.dataset.area;
       state[property] = parseNumber(event.target.value);
       state.scenarios.forEach(sc => { sc[property] = state[property]; });
       updateDashboard();
+    });
+    input.addEventListener('blur', event => {
+      const value = parseNumber(event.target.value);
+      event.target.value = value ? formatNum(value) : '';
     });
   });
   const typeSelect = document.getElementById('building-area-type');
@@ -2196,42 +2306,22 @@ function loadParsedScenarios(scenarios) {
   renderScenarioAreas();
   renderUnmappedWarning();
 
-  // Option: average of the 4 baseline results, default to select it and not selecting ab1, ab2, ab3, ab4
-  state.averageBaselines = elements.averageBaselinesToggle ? elements.averageBaselinesToggle.checked : true;
+  const firstBaseline = sorted.find(s => s.scenarioName.toLowerCase().includes('baseline avg')) ||
+    sorted.find(s => /(?:^|_)ab1$/i.test(s.rawScenarioName || s.scenarioName)) ||
+    sorted[0];
+  const firstProposed = sorted.find(s => /(?:^|_)ap$/i.test(s.rawScenarioName || s.scenarioName)) ||
+    sorted.find(s => s !== firstBaseline) ||
+    firstBaseline;
 
-  if (state.averageBaselines) {
-    // Select ap and Baseline Avg across all runs; exclude individual ab1..ab4
-    state.selectedScenarios = sorted
-      .map(s => s.scenarioName)
-      .filter(name => !/(?:^|_)ab\d+$/i.test(name));
-
-    const firstAvg = sorted.find(s => s.scenarioName.toLowerCase().includes('baseline avg'));
-    state.baselineScenario = firstAvg ? firstAvg.scenarioName : sorted[0].scenarioName;
-
-    const firstAp = sorted.find(s => /(?:^|_)ap$/i.test(s.scenarioName) || s.scenarioName.toLowerCase() === 'ap');
-    state.activeScenario = firstAp ? firstAp.scenarioName : (firstAvg ? firstAvg.scenarioName : sorted[0].scenarioName);
-  } else {
-    // If averaging is disabled, select all real scenarios except Baseline Avg
-    state.selectedScenarios = sorted
-      .filter(s => !s.scenarioName.toLowerCase().includes('baseline avg'))
-      .map(s => s.scenarioName);
-
-    const firstAp = sorted.find(s => /(?:^|_)ap$/i.test(s.scenarioName) || s.scenarioName.toLowerCase() === 'ap');
-    state.activeScenario = firstAp ? firstAp.scenarioName : sorted[0].scenarioName;
-
-    const firstAb = sorted.find(s => /(?:^|_)ab1$/i.test(s.scenarioName) || s.scenarioName.toLowerCase() === 'ab1');
-    state.baselineScenario = firstAb ? firstAb.scenarioName : sorted[0].scenarioName;
-  }
-
-  if (elements.averageBaselinesToggle) {
-    elements.averageBaselinesToggle.checked = state.averageBaselines;
-  }
+  state.baselineScenario = firstBaseline ? firstBaseline.scenarioName : null;
+  state.proposedScenario = firstProposed ? firstProposed.scenarioName : null;
+  state.scenarioSelectionMode = 'pair';
+  state.selectedScenarios = [...new Set([state.baselineScenario, state.proposedScenario].filter(Boolean))];
 
   updateCsvFilenamePreview();
-  renderScenariosPills();
-  renderDropdownSelectors();
+  renderScenarioSelection();
   renderCategoryMappingUI();
-  renderCategoryFilterChips();
+  renderCategoryFilterOptions();
   updateExportSectionsVisibility();
 
   elements.scenariosContainer.classList.remove('hidden');
@@ -2244,100 +2334,76 @@ function loadParsedScenarios(scenarios) {
 // Rendering: Scenarios & Controls
 // =============================================================================
 
-function renderScenariosPills() {
-  const activeCount = state.selectedScenarios.length;
-  elements.scenariosCountBadge.textContent = `${activeCount} of ${state.scenarios.length} active`;
-  elements.scenariosPillList.innerHTML = '';
+function renderScenarioSelection() {
+  const populateSelect = (select, selectedName) => {
+    select.replaceChildren(...state.scenarios.map(sc => {
+      const option = document.createElement('option');
+      option.value = sc.scenarioName;
+      option.textContent = sc.scenarioName;
+      option.selected = sc.scenarioName === selectedName;
+      return option;
+    }));
+    select.value = selectedName || '';
+  };
 
-  state.scenarios.forEach(sc => {
-    const isSelected = state.selectedScenarios.includes(sc.scenarioName);
-    const isAvg = sc.isCalculatedAverage || sc.scenarioName.toLowerCase().includes('baseline avg');
-    const pill = document.createElement('div');
-    pill.className = `scenario-pill ${isSelected ? 'active' : ''} ${isAvg ? 'pill-avg' : ''}`;
-    pill.innerHTML = `
-      <span class="pill-check">${isSelected ? '✓' : ''}</span>
-      <span>${sc.scenarioName}</span>
-      ${isAvg ? '<span class="pill-tag">AVG</span>' : ''}
-    `;
-    pill.addEventListener('click', () => { toggleScenarioSelection(sc.scenarioName); });
-    elements.scenariosPillList.appendChild(pill);
-  });
+  populateSelect(elements.baselineCaseSelect, state.baselineScenario);
+  populateSelect(elements.proposedCaseSelect, state.proposedScenario);
+  populateSelect(elements.multiBaselineSelect, state.baselineScenario);
+
+  elements.multiCaseOptions.replaceChildren(...state.scenarios.map(sc => {
+    const label = document.createElement('label');
+    label.className = 'multi-case-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = sc.scenarioName;
+    checkbox.checked = state.selectedScenarios.includes(sc.scenarioName);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) {
+        state.selectedScenarios = [...state.selectedScenarios, sc.scenarioName];
+      } else {
+        if (state.selectedScenarios.length === 1) {
+          checkbox.checked = true;
+          showToast('Notice', 'At least one scenario must remain selected', 'ℹ️');
+          return;
+        }
+        state.selectedScenarios = state.selectedScenarios.filter(name => name !== sc.scenarioName);
+        if (state.baselineScenario === sc.scenarioName) {
+          state.baselineScenario = state.selectedScenarios[0];
+          elements.multiBaselineSelect.value = state.baselineScenario;
+        }
+      }
+      renderScenarioSelection();
+      updateDashboard();
+    });
+    label.append(checkbox, document.createTextNode(sc.scenarioName));
+    return label;
+  }));
+
+  const selectedNames = state.scenarios
+    .filter(sc => state.selectedScenarios.includes(sc.scenarioName))
+    .map(sc => sc.scenarioName);
+  elements.multiCaseSummary.textContent = selectedNames.length
+    ? selectedNames.join(', ')
+    : 'Select cases';
+
+  const isPairMode = state.scenarioSelectionMode === 'pair';
+  elements.pairScenarioControls.classList.toggle('hidden', !isPairMode);
+  elements.multiScenarioControls.classList.toggle('hidden', isPairMode);
 }
 
-function toggleScenarioSelection(name) {
-  if (state.selectedScenarios.includes(name)) {
-    if (state.selectedScenarios.length > 1) {
-      state.selectedScenarios = state.selectedScenarios.filter(n => n !== name);
-    } else {
-      showToast('Notice', 'At least one scenario must remain selected', 'ℹ️');
-      return;
-    }
-  } else {
-    state.selectedScenarios.push(name);
-  }
-
-  // If user changed scenario selection, sync averageBaselines checkbox
-  const hasAvg = state.selectedScenarios.some(n => n.toLowerCase().includes('baseline avg'));
-  if (elements.averageBaselinesToggle) {
-    elements.averageBaselinesToggle.checked = hasAvg;
-  }
-
-  renderScenariosPills();
+function setPairSelection() {
+  state.selectedScenarios = [...new Set([state.baselineScenario, state.proposedScenario].filter(Boolean))];
+  renderScenarioSelection();
   updateDashboard();
 }
 
-function toggleAverageBaselines(enabled) {
-  state.averageBaselines = enabled;
-  if (enabled) {
-    // Deselect individual ab1..ab4 across all runs
-    state.selectedScenarios = state.selectedScenarios.filter(n => !/(?:^|_)ab\d+$/i.test(n));
-    // Select all Baseline Avg scenarios
-    state.scenarios.forEach(s => {
-      if (s.scenarioName.toLowerCase().includes('baseline avg') && !state.selectedScenarios.includes(s.scenarioName)) {
-        state.selectedScenarios.push(s.scenarioName);
-      }
-    });
-    const firstAvg = state.scenarios.find(s => s.scenarioName.toLowerCase().includes('baseline avg'));
-    if (firstAvg) state.baselineScenario = firstAvg.scenarioName;
-  } else {
-    // Deselect all Baseline Avg scenarios
-    state.selectedScenarios = state.selectedScenarios.filter(n => !n.toLowerCase().includes('baseline avg'));
-    // Select individual ab1..ab4 across all runs
-    state.scenarios.forEach(s => {
-      if (/(?:^|_)ab\d+$/i.test(s.rawScenarioName || s.scenarioName) && !state.selectedScenarios.includes(s.scenarioName)) {
-        state.selectedScenarios.push(s.scenarioName);
-      }
-    });
-    const firstAb = state.scenarios.find(s => /(?:^|_)ab1$/i.test(s.rawScenarioName || s.scenarioName));
-    if (firstAb) state.baselineScenario = firstAb.scenarioName;
+function setScenarioSelectionMode(mode) {
+  state.scenarioSelectionMode = mode;
+  if (mode === 'multi' && !state.selectedScenarios.length && state.baselineScenario) {
+    state.selectedScenarios = [state.baselineScenario];
   }
-  renderScenariosPills();
-  renderDropdownSelectors();
+  renderScenarioSelection();
   updateDashboard();
-}
-
-function renderDropdownSelectors() {
-  if (elements.singleScenarioSelect) {
-    elements.singleScenarioSelect.innerHTML = '';
-    state.scenarios.forEach(sc => {
-      const opt = document.createElement('option');
-      opt.value = sc.scenarioName;
-      opt.textContent = sc.scenarioName + (sc.isCalculatedAverage || sc.scenarioName.toLowerCase().includes('baseline avg') ? ' (Baseline Average)' : '');
-      if (sc.scenarioName === state.activeScenario) opt.selected = true;
-      elements.singleScenarioSelect.appendChild(opt);
-    });
-  }
-
-  if (elements.baselineScenarioSelect) {
-    elements.baselineScenarioSelect.innerHTML = '';
-    state.scenarios.forEach(sc => {
-      const opt = document.createElement('option');
-      opt.value = sc.scenarioName;
-      opt.textContent = `Baseline: ${sc.scenarioName}` + (sc.isCalculatedAverage || sc.scenarioName.toLowerCase().includes('baseline avg') ? ' (Average)' : '');
-      if (sc.scenarioName === state.baselineScenario) opt.selected = true;
-      elements.baselineScenarioSelect.appendChild(opt);
-    });
-  }
 }
 
 // =============================================================================
@@ -2348,6 +2414,10 @@ function updateDashboard() {
   const activeScenariosList = state.scenarios.filter(s => {
     return state.selectedScenarios.includes(s.scenarioName);
   });
+  const baselineIndex = activeScenariosList.findIndex(s => s.scenarioName === state.baselineScenario);
+  if (baselineIndex > 0) {
+    activeScenariosList.unshift(activeScenariosList.splice(baselineIndex, 1)[0]);
+  }
 
   if (activeScenariosList.length === 0) return;
 
@@ -2430,7 +2500,7 @@ function updateMetrics(scenarios) {
 
   const peakDisplayVal = topVal / count;
   const fc = FIXED_CATEGORIES.find(c => c.raw === topCat);
-  if (elements.metricPeakCategory) elements.metricPeakCategory.textContent = fc ? (state.cleanLabels ? fc.label : fc.raw) : topCat;
+  if (elements.metricPeakCategory) elements.metricPeakCategory.textContent = fc ? fc.label : topCat;
   if (elements.metricPeakVal) elements.metricPeakVal.textContent = `${formatNum(peakDisplayVal, 0)} ${displayUnit} avg`;
 }
 
@@ -2446,10 +2516,10 @@ function getChartCategories(scenarios) {
     }
   });
 
-  const allCats = Array.from(catSet).sort();
+  const allCats = sortEndUseCategories(Array.from(catSet));
   const filtered = allCats.filter(cat => {
     // 1. Filter by user selection in filter chips
-    if (state.visibleCategories && state.visibleCategories.size > 0 && !state.visibleCategories.has(cat)) {
+    if (!state.visibleCategories.has(cat)) {
       return false;
     }
     // 2. Hide zero rows if enabled
@@ -2477,7 +2547,7 @@ function updateChart(scenarios) {
   elements.chartMainTitle.textContent = `${state.viewMode === 'stacked' ? 'Stacked' : 'Clustered'} End-Use Energy by Scenario (${displayUnit})`;
 
   const visibleCats = getChartCategories(scenarios);
-  const labels = visibleCats.map(fc => state.cleanLabels ? fc.label : fc.raw);
+  const labels = visibleCats.map(fc => fc.label);
 
   let chartConfig = {};
 
@@ -2525,7 +2595,7 @@ function updateChart(scenarios) {
     if (state.viewMode === 'stacked') {
       const scenarioLabels = scenarios.map(sc => sc.scenarioName);
       const datasets = visibleCats.map((fc, categoryIndex) => ({
-        label: state.cleanLabels ? fc.label : fc.raw,
+        label: fc.label,
         data: scenarios.map(sc => {
           const row = sc.categoryMap[fc.raw];
           return row ? getScenarioCategoryEnergyValue(sc, row) : 0;
@@ -2577,9 +2647,11 @@ function getActiveTableCategories(scenarios) {
     }
   });
   if (catSet.size === 0) {
-    return FIXED_CATEGORIES.map(fc => ({ raw: fc.raw, label: fc.label, electricityOnly: fc.electricityOnly }));
+    return [...FIXED_CATEGORIES]
+      .sort((a, b) => compareEndUseCategories(a.raw, b.raw))
+      .map(fc => ({ raw: fc.raw, label: fc.label, electricityOnly: fc.electricityOnly }));
   }
-  return Array.from(catSet).sort().map(cat => ({
+  return sortEndUseCategories(Array.from(catSet)).map(cat => ({
     raw: cat,
     label: cat,
     electricityOnly: false
@@ -2619,7 +2691,7 @@ function updateTable(scenarios) {
   // ---- Data rows ----
   categories.forEach(fc => {
     const row = document.createElement('tr');
-    let rowHtml = `<td class="cat-col">${state.cleanLabels ? fc.label : fc.raw}</td>`;
+    let rowHtml = `<td class="cat-col">${fc.label}</td>`;
 
     scenarios.forEach((sc, sIdx) => {
       const r = sc.categoryMap ? sc.categoryMap[fc.raw] : null;
@@ -2741,7 +2813,7 @@ function exportExcelWorkbook() {
 
   // Data rows
   categories.forEach(fc => {
-    const row = [state.cleanLabels ? fc.label : fc.raw];
+    const row = [fc.label];
     activeScenariosList.forEach((sc, sIdx) => {
       const r = sc.categoryMap ? sc.categoryMap[fc.raw] : null;
       const elecKwh = r ? r.elecKwh : 0;
@@ -3084,12 +3156,6 @@ function setupEventListeners() {
       if (e.target.files.length > 0) handleFileList(e.target.files);
     });
   }
-  if (elements.browseFilesBtn && elements.browserFilesInput) {
-    elements.browseFilesBtn.addEventListener('click', () => elements.browserFilesInput.click());
-    elements.browserFilesInput.addEventListener('change', e => {
-      if (e.target.files.length > 0) handleFileList(e.target.files);
-    });
-  }
   if (elements.clearFolderBtn) {
     elements.clearFolderBtn.addEventListener('click', clearFolderSelection);
   }
@@ -3102,7 +3168,18 @@ function setupEventListeners() {
     elements.dropZoneFolder.addEventListener('drop', e => {
       e.preventDefault();
       elements.dropZoneFolder.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) handleFileList(e.dataTransfer.files);
+      collectDroppedFiles(e.dataTransfer)
+        .then(files => {
+          if (files.length > 0) {
+            handleFileList(files);
+          } else {
+            showToast('No Files Found', 'Could not read files from the dropped folder. Try Browse Folder instead.', '⚠️');
+          }
+        })
+        .catch(err => {
+          console.error('Error reading dropped model run folder:', err);
+          showToast('Folder Drop Failed', `Could not read the dropped folder: ${err.message}`, '❌');
+        });
     });
   }
 
@@ -3129,26 +3206,6 @@ function setupEventListeners() {
     });
   }
 
-  // Chart Category Filter Bulk Buttons
-  if (elements.catFilterAllBtn) {
-    elements.catFilterAllBtn.addEventListener('click', () => {
-      const catSet = new Set();
-      state.scenarios.forEach(sc => {
-        if (sc.categoryMap) Object.keys(sc.categoryMap).forEach(c => catSet.add(c));
-      });
-      state.visibleCategories = catSet;
-      renderCategoryFilterChips();
-      updateDashboard();
-    });
-  }
-  if (elements.catFilterNoneBtn) {
-    elements.catFilterNoneBtn.addEventListener('click', () => {
-      state.visibleCategories = new Set();
-      renderCategoryFilterChips();
-      updateDashboard();
-    });
-  }
-
   // Method 3 / Append Section Actions
   if (elements.appendSelectAllBtn) {
     elements.appendSelectAllBtn.addEventListener('click', () => {
@@ -3168,48 +3225,34 @@ function setupEventListeners() {
     elements.appendDownloadCsvBtn.addEventListener('click', downloadAppendedCsv);
   }
 
-  // Average Baselines Toggle
-  if (elements.averageBaselinesToggle) {
-    elements.averageBaselinesToggle.addEventListener('change', e => {
-      toggleAverageBaselines(e.target.checked);
-    });
-  }
-
-  // Scenario Bulk Actions
-  if (elements.selectAllScenariosBtn) {
-    elements.selectAllScenariosBtn.addEventListener('click', () => {
-      state.selectedScenarios = state.scenarios.map(s => s.scenarioName);
-      renderScenariosPills(); updateDashboard();
-    });
-  }
-  if (elements.deselectAllScenariosBtn) {
-    elements.deselectAllScenariosBtn.addEventListener('click', () => {
-      state.selectedScenarios = [state.scenarios[0].scenarioName];
-      renderScenariosPills(); updateDashboard();
-    });
-  }
-
   // View Mode
-  if (elements.viewModeControl) {
-    elements.viewModeControl.querySelectorAll('.seg-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        elements.viewModeControl.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.viewMode = btn.dataset.value;
-        updateDashboard();
-      });
+  if (elements.viewModeSelect) {
+    elements.viewModeSelect.addEventListener('change', () => {
+      state.viewMode = elements.viewModeSelect.value;
+      updateDashboard();
     });
   }
 
-  // Unit
-  if (elements.unitControl) {
-    elements.unitControl.querySelectorAll('.seg-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        elements.unitControl.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.energyUnit = btn.dataset.unit;
-        updateDashboard();
-      });
+  // Energy Source and Unit
+  if (elements.energySourceSelect && elements.energyUnitSelect) {
+    elements.energySourceSelect.addEventListener('change', () => {
+      const keepPerArea = state.energyUnit.startsWith('eui');
+      state.energySource = elements.energySourceSelect.value;
+      const options = ENERGY_UNITS_BY_SOURCE[state.energySource];
+      elements.energyUnitSelect.replaceChildren(...options.map(({ value, label }) => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = label;
+        return option;
+      }));
+      state.energyUnit = options[keepPerArea ? 1 : 0].value;
+      elements.energyUnitSelect.value = state.energyUnit;
+      updateDashboard();
+    });
+
+    elements.energyUnitSelect.addEventListener('change', () => {
+      state.energyUnit = elements.energyUnitSelect.value;
+      updateDashboard();
     });
   }
 
@@ -3218,18 +3261,33 @@ function setupEventListeners() {
     elements.chartTypeSelect.addEventListener('change', e => { state.chartType = e.target.value; updateDashboard(); });
   }
 
-  // Scenario Selectors
-  if (elements.singleScenarioSelect) {
-    elements.singleScenarioSelect.addEventListener('change', e => { state.activeScenario = e.target.value; updateDashboard(); });
-  }
-  if (elements.baselineScenarioSelect) {
-    elements.baselineScenarioSelect.addEventListener('change', e => { state.baselineScenario = e.target.value; updateDashboard(); });
-  }
+  // Scenario selection
+  elements.baselineCaseSelect.addEventListener('change', () => {
+    state.baselineScenario = elements.baselineCaseSelect.value;
+    if (state.baselineScenario === state.proposedScenario && state.scenarios.length > 1) {
+      state.proposedScenario = state.scenarios.find(sc => sc.scenarioName !== state.baselineScenario).scenarioName;
+    }
+    setPairSelection();
+  });
+  elements.proposedCaseSelect.addEventListener('change', () => {
+    state.proposedScenario = elements.proposedCaseSelect.value;
+    if (state.proposedScenario === state.baselineScenario && state.scenarios.length > 1) {
+      state.baselineScenario = state.scenarios.find(sc => sc.scenarioName !== state.proposedScenario).scenarioName;
+    }
+    setPairSelection();
+  });
+  elements.multiBaselineSelect.addEventListener('change', () => {
+    state.baselineScenario = elements.multiBaselineSelect.value;
+    if (!state.selectedScenarios.includes(state.baselineScenario)) {
+      state.selectedScenarios.push(state.baselineScenario);
+    }
+    renderScenarioSelection();
+    updateDashboard();
+  });
+  elements.compareMultipleBtn.addEventListener('click', () => setScenarioSelectionMode('multi'));
+  elements.pairScenarioBtn.addEventListener('click', () => setScenarioSelectionMode('pair'));
 
   // Options
-  if (elements.cleanLabelsToggle) {
-    elements.cleanLabelsToggle.addEventListener('change', e => { state.cleanLabels = e.target.checked; updateDashboard(); });
-  }
   if (elements.hideZeroesToggle) {
     elements.hideZeroesToggle.addEventListener('change', e => { state.hideZeroes = e.target.checked; updateDashboard(); });
   }

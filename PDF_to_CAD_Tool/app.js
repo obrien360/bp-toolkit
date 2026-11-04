@@ -60,7 +60,6 @@ function getRoomColor(name, index) {
 
 // DOM Elements
 const el = {
-  connectionBadge: document.getElementById('connectionBadge'),
   dropZone: document.getElementById('dropZone'),
   fileInput: document.getElementById('fileInput'),
   btnBrowse: document.getElementById('btnBrowse'),
@@ -157,34 +156,17 @@ async function checkServerConnection() {
   if (window.location.protocol === 'file:' ||
       !['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)) {
     state.serverAvailable = false;
-    updateConnectionBadge(false);
     return;
   }
   try {
     const res = await fetch('/api/common-scales', { method: 'GET', signal: AbortSignal.timeout(1500) });
     if (res.ok) {
       state.serverAvailable = true;
-      updateConnectionBadge(true);
     } else {
       state.serverAvailable = false;
-      updateConnectionBadge(false);
     }
   } catch (e) {
     state.serverAvailable = false;
-    updateConnectionBadge(false);
-  }
-}
-
-function updateConnectionBadge(connected) {
-  if (!el.connectionBadge) return;
-  if (connected) {
-    el.connectionBadge.textContent = 'Server Connected (Active)';
-    el.connectionBadge.style.background = '#f2f8ea';
-    el.connectionBadge.style.color = '#4b7811';
-  } else {
-    el.connectionBadge.textContent = 'Standalone Browser Mode (Active)';
-    el.connectionBadge.style.background = '#edf3fa';
-    el.connectionBadge.style.color = '#3d6191';
   }
 }
 
@@ -342,7 +324,6 @@ async function loadExampleFile() {
     } catch (e) {
       console.warn('Server fetch failed, falling back to browser PDF parsing:', e);
       state.serverAvailable = false;
-      updateConnectionBadge(false);
     }
   }
 
@@ -831,7 +812,6 @@ async function runConversion() {
     } catch (e) {
       console.warn('Server convert failed, using client-side geometry engine:', e);
       state.serverAvailable = false;
-      updateConnectionBadge(false);
     }
   }
 
