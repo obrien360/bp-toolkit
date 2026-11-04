@@ -1706,7 +1706,7 @@
     handleBrowserFolderUpload: handleBrowserFolderUpload,
     handleWorkbookFile: handleExcelUpload,
     onSharedFolderUpdated: function (folderPath, folderName, sourceTab, fileList = null) {
-      if (fileList && fileList.length > 0) {
+      if (sourceTab !== 'Model QC Tab' && fileList && fileList.length > 0) {
         handleBrowserFolderUpload(fileList);
       }
     },

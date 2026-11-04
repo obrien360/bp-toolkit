@@ -1664,9 +1664,6 @@ async function handleFileList(files) {
     if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
       window.CBECC_SHARED.setFolder('', state.selectedFolderName, 'Compliance Tab', files);
     }
-    if (window.QCModule && typeof window.QCModule.handleBrowserFolderUpload === 'function') {
-      window.QCModule.handleBrowserFolderUpload(files);
-    }
 
     updateExportSectionsVisibility();
     showToast('Success', `Successfully parsed ${parsedResults.length} scenarios!`, '✅');
