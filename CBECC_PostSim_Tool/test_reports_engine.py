@@ -43,7 +43,7 @@ class TestReportsEngine(unittest.TestCase):
     def test_scan_folder_example2(self):
         res = reports_engine.scan_folder_for_leed_summary(self.sample_folder_2)
         self.assertTrue(res['success'])
-        self.assertEqual(res['fileName'], '2527_Shoebox MDL - ap - LEEDSummary.csv')
+        self.assertEqual(res['fileName'], 'Shoebox MDL - ap - LEEDSummary.csv')
         
         # Check Big Table 1 counts
         self.assertEqual(res['counts']['opaqueSurfaces'], 518)
@@ -72,7 +72,7 @@ class TestReportsEngine(unittest.TestCase):
     def test_scan_folder_example1(self):
         res = reports_engine.scan_folder_for_leed_summary(self.sample_folder_1)
         self.assertTrue(res['success'])
-        self.assertEqual(res['fileName'], '1574_GLBH_S901G_CBECC2025 - ap - LEEDSummary.csv')
+        self.assertEqual(res['fileName'], 'S901G_CBECC2025 - ap - LEEDSummary.csv')
         self.assertEqual(res['counts']['opaqueSurfaces'], 159)
         self.assertEqual(res['counts']['fenSurfaces'], 54)
 

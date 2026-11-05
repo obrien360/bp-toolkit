@@ -621,6 +621,12 @@ const state = {
   selectedFolderName: '',    // Current project folder name
   buildingAreaType: 'conditioned',
   buildingArea: 0,
+  electricityCostRate: 0.1013,
+  naturalGasCostRate: 1.283,
+  exportScenarioNames: new Set(),
+  knownExportScenarioNames: new Set(),
+  appendScenarioNames: new Set(),
+  knownAppendScenarioNames: new Set(),
 
   // Mode 1 & 3: CSV and Append State
   loadedCsvRows: [],         // Array of raw CSV rows (header 1, header 2, data rows)
@@ -678,6 +684,8 @@ const elements = {
 
   unmappedWarning: document.getElementById('unmapped-warning'),
   scenarioAreas: document.getElementById('scenario-areas'),
+  electricityCostRate: document.getElementById('electricity-cost-rate'),
+  naturalGasCostRate: document.getElementById('natural-gas-cost-rate'),
   categoryMappingContainer: document.getElementById('category-mapping-container'),
   mappingStatusHint: document.getElementById('mapping-status-hint'),
 
@@ -692,6 +700,10 @@ const elements = {
   multiCaseSummary: document.getElementById('multi-case-summary'),
   multiCaseOptions: document.getElementById('multi-case-options'),
   pairScenarioBtn: document.getElementById('pair-scenario-btn'),
+  pairSavingsDetails: document.getElementById('pair-savings-details'),
+  pairSavingsSummary: document.getElementById('pair-savings-summary'),
+  pairSavingsBody: document.getElementById('pair-savings-body'),
+  pairSavingsTable: document.getElementById('pair-savings-table'),
 
   dashboardArea: document.getElementById('dashboard-area'),
 
@@ -736,7 +748,8 @@ const elements = {
   csvFilenamePreview: document.getElementById('csv-filename-preview'),
   csvRunId: document.getElementById('csv-run-id'),
   csvRevision: document.getElementById('csv-revision'),
-  csvExportScope: document.getElementById('csv-export-scope'),
+  csvExportOptions: document.getElementById('csv-export-options'),
+  csvExportSummary: document.getElementById('csv-export-summary'),
   exportCsvBtn: document.getElementById('export-csv-btn'),
   csvBrowseFolderBtn: document.getElementById('csv-browse-folder-btn'),
   csvLocationStatus: document.getElementById('csv-location-status'),
@@ -744,9 +757,8 @@ const elements = {
   // CSV Append panel (Mode 3: Both CSV + Folder)
   csvAppendSection: document.getElementById('csv-append-section'),
   appendTargetCsvName: document.getElementById('append-target-csv-name'),
-  appendScenarioChecklist: document.getElementById('append-scenario-checklist'),
-  appendSelectAllBtn: document.getElementById('append-select-all-btn'),
-  appendDeselectAllBtn: document.getElementById('append-deselect-all-btn'),
+  appendScenarioOptions: document.getElementById('append-scenario-options'),
+  appendScenarioSummary: document.getElementById('append-scenario-summary'),
   appendExportFilename: document.getElementById('append-export-filename'),
   appendExportLocation: document.getElementById('append-export-location'),
   appendDownloadCsvBtn: document.getElementById('append-download-csv-btn'),
@@ -985,6 +997,108 @@ function getScenarioEnergyValue(sc, unit = state.energyUnit) {
 // - Both CSV and Run Folder: show "Append Scenarios to CSV Log"
 // =============================================================================
 
+function getScenarioExportWeight(scenario) {
+  const name = (scenario.rawScenarioName || scenario.scenarioName || '').toLowerCase().trim();
+  if (name === 'ap' || name.endsWith('_ap')) return 1;
+  if (name === 'ab1' || name.endsWith('_ab1')) return 2;
+  if (name === 'ab2' || name.endsWith('_ab2')) return 3;
+  if (name === 'ab3' || name.endsWith('_ab3')) return 4;
+  if (name === 'ab4' || name.endsWith('_ab4')) return 5;
+  if (name.includes('baseline avg') || name === 'ab_avg' || name.endsWith('_ab_avg')) return 6;
+  return 10;
+}
+
+function sortScenariosForExport(scenarios) {
+  return [...scenarios].sort((a, b) => {
+    const runOrder = (a.runId || '').localeCompare(b.runId || '', undefined, { numeric: true });
+    if (runOrder !== 0) return runOrder;
+    const rankOrder = getScenarioExportWeight(a) - getScenarioExportWeight(b);
+    return rankOrder || a.scenarioName.localeCompare(b.scenarioName);
+  });
+}
+
+function renderScenarioCheckboxDropdown(container, summary, scenarios, selectedNames, knownNames, checkboxClass) {
+  if (!container || !summary) return;
+  const orderedScenarios = sortScenariosForExport(scenarios);
+  const availableNames = new Set(orderedScenarios.map(scenario => scenario.scenarioName));
+
+  knownNames.forEach(name => {
+    if (!availableNames.has(name)) {
+      knownNames.delete(name);
+      selectedNames.delete(name);
+    }
+  });
+  orderedScenarios.forEach(scenario => {
+    if (!knownNames.has(scenario.scenarioName)) selectedNames.add(scenario.scenarioName);
+    knownNames.add(scenario.scenarioName);
+  });
+
+  container.replaceChildren(...orderedScenarios.map((scenario, index) => {
+    const label = document.createElement('label');
+    label.className = 'multi-case-option';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = checkboxClass;
+    checkbox.value = scenario.scenarioName;
+    checkbox.checked = selectedNames.has(scenario.scenarioName);
+    checkbox.dataset.index = String(index);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selectedNames.add(scenario.scenarioName);
+      else selectedNames.delete(scenario.scenarioName);
+      renderScenarioCheckboxSummary(summary, orderedScenarios, selectedNames);
+    });
+    label.append(checkbox, document.createTextNode(scenario.scenarioName));
+    return label;
+  }));
+  renderScenarioCheckboxSummary(summary, orderedScenarios, selectedNames);
+}
+
+function renderScenarioCheckboxSummary(summary, scenarios, selectedNames) {
+  const selected = sortScenariosForExport(scenarios.filter(scenario =>
+    selectedNames.has(scenario.scenarioName)
+  ));
+  summary.textContent = !scenarios.length
+    ? 'No scenarios available'
+    : selected.length === scenarios.length
+    ? 'All scenarios'
+    : selected.length
+      ? selected.map(scenario => scenario.scenarioName).join(', ')
+      : 'No scenarios selected';
+}
+
+function getAppendScenarioList() {
+  const folderScenarios = (state.loadedFolder && state.loadedFolder.rawScenarios) || [];
+  if (!folderScenarios.length) return [];
+
+  const folderScenarioSet = new Set(folderScenarios);
+  const folderRunKeys = new Set(folderScenarios.map(scenario =>
+    (scenario.runId && scenario.revision) ? `${scenario.runId}_${scenario.revision}` : (scenario.runId || 'default')
+  ));
+  const csvScenarioNames = new Set((state.loadedCsv && state.loadedCsv.scenarios || [])
+    .map(scenario => scenario.scenarioName));
+  const runScenarios = state.scenarios.filter(scenario =>
+    folderScenarioSet.has(scenario) || (
+      scenario.isCalculatedAverage &&
+      !csvScenarioNames.has(scenario.scenarioName) &&
+      folderRunKeys.has((scenario.runId && scenario.revision)
+        ? `${scenario.runId}_${scenario.revision}`
+        : (scenario.runId || 'default'))
+    )
+  );
+  return sortScenariosForExport(runScenarios.length ? runScenarios : folderScenarios);
+}
+
+function renderCsvExportOptions() {
+  renderScenarioCheckboxDropdown(
+    elements.csvExportOptions,
+    elements.csvExportSummary,
+    state.scenarios,
+    state.exportScenarioNames,
+    state.knownExportScenarioNames,
+    'csv-export-scenario-cb'
+  );
+}
+
 function updateExportSectionsVisibility() {
   const hasCsv = !!state.loadedCsv;
   const hasFolder = !!(state.loadedFolder && state.rawScenarios && state.rawScenarios.length > 0);
@@ -1006,6 +1120,7 @@ function updateExportSectionsVisibility() {
     if (elements.csvExportSection) {
       elements.csvExportSection.classList.remove('hidden');
     }
+    renderCsvExportOptions();
   } else if (hasCsv) {
     state.activeIngestionMethod = 1;
   }
@@ -1238,7 +1353,7 @@ function parseComplianceCSV(csvText, filename = '', formatCompositeName = false)
       isCalculatedAverage: isAvg,
       fileBaseName: `${scenarioName}.csv`,
       totalBuildingArea: buildingArea,
-      netConditionedBuildingArea: 0,
+      netConditionedBuildingArea: buildingArea,
       buildingArea,
       categoryMap,
       rawCategoryMap,
@@ -1806,11 +1921,11 @@ function clearFolderSelection() {
 async function loadExampleDataInBrowser() {
   showToast('Loading Demo...', 'Fetching sample CBECC simulation files...', '⏳');
   const demoFiles = [
-    { scenario: 'ap', path: 'example_project_folder/ap/1574_GLBH_S901G_CBECC2025 - ap.htm', name: '1574_GLBH_S901G_CBECC2025 - ap.htm' },
-    { scenario: 'ab1', path: 'example_project_folder/ab1/1574_GLBH_S901G_CBECC2025 - ab1.htm', name: '1574_GLBH_S901G_CBECC2025 - ab1.htm' },
-    { scenario: 'ab2', path: 'example_project_folder/ab2/1574_GLBH_S901G_CBECC2025 - ab2.htm', name: '1574_GLBH_S901G_CBECC2025 - ab2.htm' },
-    { scenario: 'ab3', path: 'example_project_folder/ab3/1574_GLBH_S901G_CBECC2025 - ab3.htm', name: '1574_GLBH_S901G_CBECC2025 - ab3.htm' },
-    { scenario: 'ab4', path: 'example_project_folder/ab4/1574_GLBH_S901G_CBECC2025 - ab4.htm', name: '1574_GLBH_S901G_CBECC2025 - ab4.htm' },
+    { scenario: 'ap', path: 'example_project_folder/ap/S901G_CBECC2025 - ap.htm', name: 'S901G_CBECC2025 - ap.htm' },
+    { scenario: 'ab1', path: 'example_project_folder/ab1/S901G_CBECC2025 - ab1.htm', name: 'S901G_CBECC2025 - ab1.htm' },
+    { scenario: 'ab2', path: 'example_project_folder/ab2/S901G_CBECC2025 - ab2.htm', name: 'S901G_CBECC2025 - ab2.htm' },
+    { scenario: 'ab3', path: 'example_project_folder/ab3/S901G_CBECC2025 - ab3.htm', name: 'S901G_CBECC2025 - ab3.htm' },
+    { scenario: 'ab4', path: 'example_project_folder/ab4/S901G_CBECC2025 - ab4.htm', name: 'S901G_CBECC2025 - ab4.htm' },
   ];
 
   try {
@@ -1830,7 +1945,7 @@ async function loadExampleDataInBrowser() {
 
     if (parsedResults.length > 0) {
       state.isAppendedData = false;
-      state.selectedFolderName = '1574_GLBH_S901G_CBECC2025';
+      state.selectedFolderName = 'S901G_CBECC2025';
       state.loadedFolder = {
         files: demoFiles,
         name: state.selectedFolderName,
@@ -1839,14 +1954,14 @@ async function loadExampleDataInBrowser() {
 
       if (elements.slotFolder) elements.slotFolder.classList.add('active-loaded');
       if (elements.folderStatusLabel) {
-        elements.folderStatusLabel.innerHTML = `<strong>1574_GLBH_S901G_CBECC2025</strong> (5 sc)`;
+        elements.folderStatusLabel.innerHTML = `<strong>S901G_CBECC2025</strong> (5 sc)`;
       }
       if (elements.clearFolderBtn) elements.clearFolderBtn.classList.remove('hidden');
 
       updateCsvFilenamePreview();
 
       if (elements.csvExportFilename) {
-        elements.csvExportFilename.value = getCleanCsvFilename('1574_GLBH_S901G_CBECC2025');
+        elements.csvExportFilename.value = getCleanCsvFilename('S901G_CBECC2025');
       }
       if (elements.csvExportLocation) {
         elements.csvExportLocation.value = '..\\';
@@ -1864,7 +1979,7 @@ async function loadExampleDataInBrowser() {
 
       updateExportSectionsVisibility();
       if (window.CBECC_SHARED && typeof window.CBECC_SHARED.setFolder === 'function') {
-        window.CBECC_SHARED.setFolder('example_project_folder', '1574_GLBH_S901G_CBECC2025', 'Compliance Tab');
+        window.CBECC_SHARED.setFolder('example_project_folder', 'S901G_CBECC2025', 'Compliance Tab');
       }
       showToast('Demo Loaded', 'Loaded 5 example scenarios (ap, ab1–ab4)', '✅');
     }
@@ -1879,41 +1994,14 @@ async function loadExampleDataInBrowser() {
 // =============================================================================
 
 function renderAppendChecklist() {
-  if (!elements.appendScenarioChecklist) return;
-  elements.appendScenarioChecklist.innerHTML = '';
-
-  const folderScenarios = (state.loadedFolder && state.loadedFolder.rawScenarios) || [];
-  if (folderScenarios.length === 0) {
-    elements.appendScenarioChecklist.innerHTML = '<span class="text-muted" style="font-size:0.8rem;padding:8px;">No model run folder loaded.</span>';
-    return;
-  }
-
-  // Scenarios belonging to the newly loaded folder + its computed Baseline Avg
-  const runScenarios = state.scenarios.filter(s => {
-    return folderScenarios.some(fs => fs.rawScenarioName === (s.rawScenarioName || s.scenarioName)) ||
-      (s.isCalculatedAverage && (!state.loadedCsv || !state.loadedCsv.scenarios.some(cs => cs.scenarioName === s.scenarioName)));
-  });
-
-  const displayList = runScenarios.length > 0 ? runScenarios : folderScenarios;
-
-  displayList.forEach((sc, idx) => {
-    const raw = sc.rawScenarioName || sc.scenarioName;
-    const isAvg = sc.isCalculatedAverage || raw.toLowerCase().includes('baseline avg');
-    const labelText = isAvg ? `${sc.scenarioName} (Calculated Baseline Average)` :
-      raw === 'ap' ? `${sc.scenarioName} (Proposed Design)` :
-        `${sc.scenarioName} (${raw.toUpperCase()})`;
-
-    const itemDiv = document.createElement('div');
-    itemDiv.className = 'append-check-item';
-    itemDiv.innerHTML = `
-      <label class="custom-checkbox">
-        <input type="checkbox" class="append-scenario-cb" data-index="${idx}" value="${sc.scenarioName}" checked />
-        <span class="checkmark"></span>
-        <span class="append-item-label">${labelText}</span>
-      </label>
-    `;
-    elements.appendScenarioChecklist.appendChild(itemDiv);
-  });
+  renderScenarioCheckboxDropdown(
+    elements.appendScenarioOptions,
+    elements.appendScenarioSummary,
+    getAppendScenarioList(),
+    state.appendScenarioNames,
+    state.knownAppendScenarioNames,
+    'append-scenario-cb'
+  );
 }
 
 async function downloadAppendedCsv() {
@@ -1926,14 +2014,18 @@ async function downloadAppendedCsv() {
     return;
   }
 
-  const checkboxes = elements.appendScenarioChecklist ? elements.appendScenarioChecklist.querySelectorAll('.append-scenario-cb:checked') : [];
+  const checkboxes = elements.appendScenarioOptions
+    ? elements.appendScenarioOptions.querySelectorAll('.append-scenario-cb:checked')
+    : [];
   if (checkboxes.length === 0) {
     showToast('Selection Empty', 'Please select at least one scenario to append.', '⚠️');
     return;
   }
 
-  const selectedNames = Array.from(checkboxes).map(cb => cb.value);
-  const scenariosToAppend = state.scenarios.filter(sc => selectedNames.includes(sc.scenarioName));
+  const selectedNames = new Set(Array.from(checkboxes).map(cb => cb.value));
+  const scenariosToAppend = sortScenariosForExport(getAppendScenarioList().filter(sc =>
+    selectedNames.has(sc.scenarioName)
+  ));
 
   if (scenariosToAppend.length === 0) {
     showToast('No Scenarios', 'No matching scenarios to append.', '⚠️');
@@ -2211,7 +2303,7 @@ function renderScenarioAreas() {
   if (!elements.scenarioAreas) return;
   elements.scenarioAreas.innerHTML = `
     <div class="scenario-area-field"><label for="building-area-type">Area Basis</label><select id="building-area-type" class="select-dropdown"><option value="total" ${state.buildingAreaType === 'total' ? 'selected' : ''}>Total Building Area</option><option value="conditioned" ${state.buildingAreaType === 'conditioned' ? 'selected' : ''}>Net Conditioned Building Area</option></select></div>
-    <div class="scenario-area-field"><label for="building-area-value">Building Area (ft2)</label><input id="building-area-value" type="text" inputmode="decimal" data-area="buildingArea" value="${state.buildingArea ? formatNum(state.buildingArea) : ''}"></div>`;
+    <div class="scenario-area-field building-area-value-field"><label for="building-area-value">Building Area (ft2)</label><input id="building-area-value" type="text" inputmode="numeric" data-area="buildingArea" value="${state.buildingArea ? formatNum(state.buildingArea, 0) : ''}"></div>`;
   elements.scenarioAreas.querySelectorAll('input[data-area]').forEach(input => {
     input.addEventListener('input', event => {
       const property = event.target.dataset.area;
@@ -2221,7 +2313,7 @@ function renderScenarioAreas() {
     });
     input.addEventListener('blur', event => {
       const value = parseNumber(event.target.value);
-      event.target.value = value ? formatNum(value) : '';
+      event.target.value = value ? formatNum(value, 0) : '';
     });
   });
   const typeSelect = document.getElementById('building-area-type');
@@ -2389,6 +2481,7 @@ function renderScenarioSelection() {
   const isPairMode = state.scenarioSelectionMode === 'pair';
   elements.pairScenarioControls.classList.toggle('hidden', !isPairMode);
   elements.multiScenarioControls.classList.toggle('hidden', isPairMode);
+  elements.pairSavingsDetails.classList.toggle('hidden', !isPairMode);
 }
 
 function setPairSelection() {
@@ -2410,14 +2503,118 @@ function setScenarioSelectionMode(mode) {
 // Dashboard Updates (Metrics, Chart, Table)
 // =============================================================================
 
-function updateDashboard() {
-  const activeScenariosList = state.scenarios.filter(s => {
-    return state.selectedScenarios.includes(s.scenarioName);
-  });
-  const baselineIndex = activeScenariosList.findIndex(s => s.scenarioName === state.baselineScenario);
-  if (baselineIndex > 0) {
-    activeScenariosList.unshift(activeScenariosList.splice(baselineIndex, 1)[0]);
+function getCurrentResultScenarios() {
+  const scenarios = state.scenarios.filter(scenario =>
+    state.selectedScenarios.includes(scenario.scenarioName)
+  );
+  const baselineIndex = scenarios.findIndex(scenario =>
+    scenario.scenarioName === state.baselineScenario
+  );
+  if (baselineIndex > 0) scenarios.unshift(scenarios.splice(baselineIndex, 1)[0]);
+  return scenarios;
+}
+
+function getPercentReduction(baselineValue, proposedValue) {
+  if (baselineValue === 0) return proposedValue === 0 ? 0 : null;
+  return ((baselineValue - proposedValue) / baselineValue) * 100;
+}
+
+function formatPercentReduction(value) {
+  return value === null ? '—' : `${formatNum(value, 1)}%`;
+}
+
+function formatSavingsAmount(value, decimals = 0, currency = false) {
+  if (!value) return '—';
+  const amount = currency ? `$${formatNum(Math.abs(value), decimals)}` : formatNum(Math.abs(value), decimals);
+  return value < 0 ? `-${amount}` : amount;
+}
+
+function getScenarioCostSummary(scenario) {
+  const summary = scenario.summary || {};
+  const electricityCost = (summary.totalElectricity_kWh || 0) * state.electricityCostRate;
+  const naturalGasCost = (summary.totalNaturalGas_therm || 0) * state.naturalGasCostRate;
+  return {
+    electricityKwh: summary.totalElectricity_kWh || 0,
+    naturalGasTherms: summary.totalNaturalGas_therm || 0,
+    totalKbtu: summary.grandTotal_kBtu || 0,
+    electricityCost,
+    naturalGasCost,
+    totalCost: electricityCost + naturalGasCost,
+    buildingArea: scenario.buildingArea || state.buildingArea || 0
+  };
+}
+
+function updatePairSavingsOverview() {
+  const baseline = state.scenarios.find(scenario =>
+    scenario.scenarioName === state.baselineScenario
+  );
+  const proposed = state.scenarios.find(scenario =>
+    scenario.scenarioName === state.proposedScenario
+  );
+  if (!baseline || !proposed) {
+    elements.pairSavingsSummary.textContent = 'Energy reduction — · Cost reduction —';
+    elements.pairSavingsBody.replaceChildren();
+    return;
   }
+
+  const base = getScenarioCostSummary(baseline);
+  const next = getScenarioCostSummary(proposed);
+  const totalEnergyReduction = getPercentReduction(base.totalKbtu, next.totalKbtu);
+  const totalCostReduction = getPercentReduction(base.totalCost, next.totalCost);
+  elements.pairSavingsSummary.textContent =
+    `Energy reduction ${formatPercentReduction(totalEnergyReduction)} · Cost reduction ${formatPercentReduction(totalCostReduction)}`;
+
+  const hasGas = base.naturalGasTherms > 0 || next.naturalGasTherms > 0;
+  const area = state.buildingArea;
+  const rows = [
+    { label: 'Electricity (kWh)', base: base.electricityKwh, proposed: next.electricityKwh, decimals: 0 },
+    ...(hasGas ? [{
+      label: 'Natural Gas (therms)',
+      base: base.naturalGasTherms,
+      proposed: next.naturalGasTherms,
+      decimals: 0
+    }] : []),
+    { label: 'Total Energy (MBtu)', base: base.totalKbtu / 1000, proposed: next.totalKbtu / 1000, decimals: 0 },
+    { label: 'EUI (kBtu/ft²)', base: area > 0 ? base.totalKbtu / area : null, proposed: area > 0 ? next.totalKbtu / area : null, decimals: 1 },
+    { label: 'Electricity Cost ($/yr)', base: base.electricityCost, proposed: next.electricityCost, decimals: 0, currency: true },
+    ...(hasGas ? [{
+      label: 'Natural Gas Cost ($/yr)',
+      base: base.naturalGasCost,
+      proposed: next.naturalGasCost,
+      decimals: 0,
+      currency: true
+    }] : []),
+    { label: 'Total Energy Cost ($/yr)', base: base.totalCost, proposed: next.totalCost, decimals: 0, currency: true, total: true },
+    { label: 'Cost EUI ($/yr-ft²)', base: area > 0 ? base.totalCost / area : null, proposed: area > 0 ? next.totalCost / area : null, decimals: 2, currency: true, total: true }
+  ];
+
+  elements.pairSavingsBody.replaceChildren(...rows.map(row => {
+    const tableRow = document.createElement('tr');
+    if (row.total) tableRow.classList.add('savings-total-row');
+    if (row.label === 'Cost EUI ($/yr-ft²)') tableRow.classList.add('savings-overall-row');
+    const savings = row.base === null || row.proposed === null ? null : row.base - row.proposed;
+    const reduction = row.base === null || row.proposed === null
+      ? null
+      : getPercentReduction(row.base, row.proposed);
+    const values = [
+      row.label,
+      row.base === null ? '—' : formatSavingsAmount(row.base, row.decimals, row.currency),
+      row.proposed === null ? '—' : formatSavingsAmount(row.proposed, row.decimals, row.currency),
+      savings === null ? '—' : formatSavingsAmount(savings, row.decimals, row.currency),
+      formatPercentReduction(reduction)
+    ];
+    tableRow.replaceChildren(...values.map((value, index) => {
+      const cell = document.createElement(index === 0 ? 'th' : 'td');
+      cell.textContent = value;
+      return cell;
+    }));
+    return tableRow;
+  }));
+}
+
+function updateDashboard() {
+  const activeScenariosList = getCurrentResultScenarios();
+  updatePairSavingsOverview();
 
   if (activeScenariosList.length === 0) return;
 
@@ -2659,75 +2856,136 @@ function getActiveTableCategories(scenarios) {
 }
 
 function updateTable(scenarios) {
-  elements.tableHead.innerHTML = '';
-  elements.tableBody.innerHTML = '';
-  elements.tableFoot.innerHTML = '';
+  elements.tableTitle.textContent = 'Result Table';
+  const baseline = scenarios.find(scenario =>
+    scenario.scenarioName === state.baselineScenario
+  ) || scenarios[0];
+  const hasGas = scenarios.some(scenario =>
+    (scenario.summary && scenario.summary.totalNaturalGas_therm > 0) ||
+    Object.values(scenario.categoryMap || {}).some(category => category.gasTherm > 0)
+  );
+  const categories = getActiveTableCategories(scenarios).filter(category =>
+    scenarios.some(scenario => {
+      const values = scenario.categoryMap && scenario.categoryMap[category.raw];
+      return values && (Math.abs(values.elecKwh || 0) > 1e-9 || Math.abs(values.gasTherm || 0) > 1e-9);
+    })
+  );
+  const measures = [
+    { key: 'electricity', label: 'Elec.', unit: 'kWh', className: 'result-elec-col' },
+    ...(hasGas ? [{ key: 'naturalGas', label: 'Natural Gas', unit: 'therms', className: 'result-gas-col' }] : []),
+    { key: 'total', label: 'Total', unit: 'MBtu', className: 'result-total-col' },
+    { key: 'eui', label: 'EUI', unit: 'kBtu/ft²-yr', className: 'result-eui-col' }
+  ];
+  const makeCell = (tag, text, className = '') => {
+    const cell = document.createElement(tag);
+    cell.textContent = text;
+    if (className) cell.className = className;
+    return cell;
+  };
 
-  elements.tableTitle.textContent = 'EAp2-4/5 Performance Rating Method Compliance';
+  const headerRows = [document.createElement('tr'), document.createElement('tr'), document.createElement('tr')];
+  const categoryHeader = makeCell('th', 'End-Use Category', 'cat-col result-category-header');
+  categoryHeader.rowSpan = 3;
+  headerRows[0].appendChild(categoryHeader);
 
-  // ---- Header row 1: Scenario group spans ----
-  let head1 = `<tr><th class="cat-col" rowspan="2">End-Use Category</th>`;
-  scenarios.forEach((sc, sIdx) => {
-    const color = getScenarioColor(sc.scenarioName, sIdx);
-    head1 += `<th class="scenario-group-header" colspan="4" style="background:${color}22; border-bottom: 3px solid ${color};">${sc.scenarioName}</th>`;
-  });
-  head1 += `</tr>`;
+  scenarios.forEach((scenario, index) => {
+    const isBaseline = scenario.scenarioName === baseline.scenarioName;
+    const title = isBaseline
+      ? `Baseline - ${scenario.scenarioName}`
+      : scenarios.length === 2
+        ? `Proposed - ${scenario.scenarioName}`
+        : scenario.scenarioName;
+    const header = makeCell(
+      'th',
+      title,
+      'scenario-group-header'
+    );
+    header.colSpan = measures.length + (isBaseline ? 0 : 1);
+    header.style.backgroundColor = `${getScenarioColor(scenario.scenarioName, index)}22`;
+    header.style.borderBottom = `3px solid ${getScenarioColor(scenario.scenarioName, index)}`;
+    headerRows[0].appendChild(header);
 
-  // ---- Header row 2: Sub-columns per scenario ----
-  let head2 = `<tr>`;
-  scenarios.forEach(() => {
-    head2 += `<th class="num-col sub-col">Elec Use<br>[kWh]</th>`;
-    head2 += `<th class="num-col sub-col">Elec Dem<br>[W]</th>`;
-    head2 += `<th class="num-col sub-col">Gas Use<br>[therm]</th>`;
-    head2 += `<th class="num-col sub-col">Gas Dem<br>[Btu/h]</th>`;
-  });
-  head2 += `</tr>`;
-
-  elements.tableHead.innerHTML = head1 + head2;
-
-  const columnTotals = scenarios.map(() => [0, 0, 0, 0]);
-  const categories = getActiveTableCategories(scenarios);
-
-  // ---- Data rows ----
-  categories.forEach(fc => {
-    const row = document.createElement('tr');
-    let rowHtml = `<td class="cat-col">${fc.label}</td>`;
-
-    scenarios.forEach((sc, sIdx) => {
-      const r = sc.categoryMap ? sc.categoryMap[fc.raw] : null;
-      const elecKwh = r ? r.elecKwh : 0;
-      const elecDemW = r ? r.elecDemW : 0;
-      const gasTherm = r ? r.gasTherm : 0;
-      const gasDemBtuh = r ? r.gasDemBtuh : 0;
-
-      columnTotals[sIdx][0] += elecKwh;
-      columnTotals[sIdx][1] += elecDemW;
-      columnTotals[sIdx][2] += gasTherm;
-      columnTotals[sIdx][3] += gasDemBtuh;
-
-      const gasDisplay = fc.electricityOnly;
-
-      rowHtml += `<td class="num-col">${formatNum(elecKwh)}</td>`;
-      rowHtml += `<td class="num-col">${formatNum(elecDemW)}</td>`;
-      rowHtml += `<td class="num-col gas-col${gasDisplay ? ' elec-only' : ''}">${gasDisplay ? '-' : formatNum(gasTherm)}</td>`;
-      rowHtml += `<td class="num-col gas-col${gasDisplay ? ' elec-only' : ''}">${gasDisplay ? '-' : formatNum(gasDemBtuh)}</td>`;
+    measures.forEach(measure => {
+      headerRows[1].appendChild(makeCell('th', measure.label, `num-col sub-col result-sub-col ${measure.className}`));
+      headerRows[2].appendChild(makeCell('th', measure.unit, `num-col result-unit-col ${measure.className}`));
     });
-
-    row.innerHTML = rowHtml;
-    elements.tableBody.appendChild(row);
+    if (!isBaseline) {
+      headerRows[1].appendChild(makeCell('th', 'Reduction', 'num-col sub-col result-sub-col result-savings-col'));
+      headerRows[2].appendChild(makeCell('th', '%', 'num-col result-unit-col result-savings-col'));
+    }
   });
+  elements.tableHead.replaceChildren(...headerRows);
 
-  // ---- Totals footer ----
-  let footHtml = `<tr><td class="cat-col">TOTAL END USES</td>`;
-  scenarios.forEach((sc, sIdx) => {
-    const [sumElec, sumElecDem, sumGas, sumGasDem] = columnTotals[sIdx];
-    footHtml += `<td class="num-col"><strong>${formatNum(sumElec)}</strong></td>`;
-    footHtml += `<td class="num-col">${formatNum(sumElecDem)}</td>`;
-    footHtml += `<td class="num-col gas-col"><strong>${formatNum(sumGas)}</strong></td>`;
-    footHtml += `<td class="num-col gas-col">${formatNum(sumGasDem)}</td>`;
+  const getCategoryValues = (scenario, category) => {
+    const values = scenario.categoryMap && scenario.categoryMap[category.raw];
+    const electricityKwh = values ? values.elecKwh || 0 : 0;
+    const naturalGasTherms = values ? values.gasTherm || 0 : 0;
+    const electricityKbtu = electricityKwh * CONVERSIONS.KWH_TO_KBTU;
+    const naturalGasKbtu = naturalGasTherms * CONVERSIONS.THERM_TO_KBTU;
+    return {
+      electricityKwh,
+      naturalGasTherms,
+      totalKbtu: electricityKbtu + naturalGasKbtu
+    };
+  };
+  const makeResultCells = (scenario, values, baselineValues, isBaseline) => {
+    const area = scenario.buildingArea || state.buildingArea;
+    const cells = [
+      makeCell('td', formatSavingsAmount(values.electricityKwh, 0), 'num-col result-elec-col'),
+      ...(hasGas ? [makeCell('td', formatSavingsAmount(values.naturalGasTherms, 0), 'num-col result-gas-col')] : []),
+      makeCell('td', formatSavingsAmount(values.totalKbtu / 1000, 0), 'num-col result-total-col'),
+      makeCell('td', area > 0 ? formatSavingsAmount(values.totalKbtu / area, 1) : '—', 'num-col result-eui-col')
+    ];
+    if (!isBaseline) {
+      cells.push(makeCell(
+        'td',
+        formatPercentReduction(getPercentReduction(baselineValues.totalKbtu, values.totalKbtu)),
+        'num-col result-savings-col'
+      ));
+    }
+    return cells;
+  };
+
+  const baselineRowValues = new Map(categories.map(category => [
+    category.raw,
+    getCategoryValues(baseline, category)
+  ]));
+  const bodyRows = categories.map(category => {
+    const row = document.createElement('tr');
+    row.appendChild(makeCell('td', category.label, 'cat-col'));
+    scenarios.forEach(scenario => {
+      const values = getCategoryValues(scenario, category);
+      const baselineValues = baselineRowValues.get(category.raw);
+      row.append(...makeResultCells(
+        scenario,
+        values,
+        baselineValues,
+        scenario.scenarioName === baseline.scenarioName
+      ));
+    });
+    return row;
   });
-  footHtml += `</tr>`;
-  elements.tableFoot.innerHTML = footHtml;
+  elements.tableBody.replaceChildren(...bodyRows);
+
+  const footer = document.createElement('tr');
+  footer.className = 'result-total-row';
+  footer.appendChild(makeCell('td', 'Total', 'cat-col'));
+  const baselineSummary = getScenarioCostSummary(baseline);
+  scenarios.forEach(scenario => {
+    const summary = getScenarioCostSummary(scenario);
+    const values = {
+      electricityKwh: summary.electricityKwh,
+      naturalGasTherms: summary.naturalGasTherms,
+      totalKbtu: summary.totalKbtu
+    };
+    footer.append(...makeResultCells(
+      scenario,
+      values,
+      baselineSummary,
+      scenario.scenarioName === baseline.scenarioName
+    ));
+  });
+  elements.tableFoot.replaceChildren(footer);
 }
 
 // =============================================================================
@@ -2761,8 +3019,7 @@ async function copyTableToExcel() {
 }
 
 /**
- * Native formatted Excel (.xlsx) workbook export via SheetJS
- * Exports both Compliance Summary (with 4-subcolumn scenario structure) and Scenario Totals.
+ * Export the visible result comparison and selected scenario totals.
  */
 function exportExcelWorkbook() {
   if (!state.scenarios || state.scenarios.length === 0) {
@@ -2775,126 +3032,59 @@ function exportExcelWorkbook() {
     return;
   }
 
-  const activeScenariosList = state.scenarios.filter(s => {
-    return state.selectedScenarios.includes(s.scenarioName);
-  });
+  const activeScenariosList = getCurrentResultScenarios();
 
   if (activeScenariosList.length === 0) {
     showToast('No Scenarios Selected', 'Please select at least one scenario.', '⚠️');
     return;
   }
 
-  const sheetData = [];
-
-  // Title info
   const runId = (elements.csvRunId && elements.csvRunId.value.trim()) || 'RUN-001';
   const revision = (elements.csvRevision && elements.csvRevision.value.trim()) || 'Rev.0';
-  sheetData.push(["O'Brien360 - EAp2-4/5 Performance Rating Method Compliance Report"]);
-  sheetData.push([`Generated: ${new Date().toLocaleString()}`, `Run ID: ${runId}`, `Revision: ${revision}`]);
-  sheetData.push([]); // blank separator
-
-  // Header row 1: Scenario groups
-  const headerGroupRow = ['End-Use Category'];
-  activeScenariosList.forEach(sc => {
-    headerGroupRow.push(sc.scenarioName, '', '', '');
-  });
-  sheetData.push(headerGroupRow);
-
-  // Header row 2: Metric sub-headers
-  const subHeaderRow = [''];
-  activeScenariosList.forEach(() => {
-    subHeaderRow.push('Elec Use [kWh]', 'Elec Dem [W]', 'Gas Use [therm]', 'Gas Dem [Btu/h]');
-  });
-  sheetData.push(subHeaderRow);
-
-  // Column totals
-  const columnTotals = activeScenariosList.map(() => [0, 0, 0, 0]);
-  const categories = getActiveTableCategories(activeScenariosList);
-
-  // Data rows
-  categories.forEach(fc => {
-    const row = [fc.label];
-    activeScenariosList.forEach((sc, sIdx) => {
-      const r = sc.categoryMap ? sc.categoryMap[fc.raw] : null;
-      const elecKwh = r ? r.elecKwh : 0;
-      const elecDemW = r ? r.elecDemW : 0;
-      const gasTherm = r ? r.gasTherm : 0;
-      const gasDemBtuh = r ? r.gasDemBtuh : 0;
-
-      columnTotals[sIdx][0] += elecKwh;
-      columnTotals[sIdx][1] += elecDemW;
-      columnTotals[sIdx][2] += gasTherm;
-      columnTotals[sIdx][3] += gasDemBtuh;
-
-      row.push(elecKwh, elecDemW);
-      if (fc.electricityOnly) {
-        row.push('-', '-');
-      } else {
-        row.push(gasTherm, gasDemBtuh);
-      }
-    });
-    sheetData.push(row);
-  });
-
-  // Footer totals row
-  const footerRow = ['TOTAL END USES'];
-  activeScenariosList.forEach((sc, sIdx) => {
-    const [sumElec, sumElecDem, sumGas, sumGasDem] = columnTotals[sIdx];
-    footerRow.push(
-      Number(sumElec.toFixed(2)),
-      Number(sumElecDem.toFixed(2)),
-      Number(sumGas.toFixed(2)),
-      Number(sumGasDem.toFixed(2))
-    );
-  });
-  sheetData.push(footerRow);
-
-  // Create worksheet and apply merges
-  const ws = XLSX.utils.aoa_to_sheet(sheetData);
-
-  ws['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: activeScenariosList.length * 4 } },
-    { s: { r: 3, c: 0 }, e: { r: 4, c: 0 } }
-  ];
-
-  activeScenariosList.forEach((_, idx) => {
-    const startCol = 1 + (idx * 4);
-    ws['!merges'].push({ s: { r: 3, c: startCol }, e: { r: 3, c: startCol + 3 } });
-  });
-
-  const colWidths = [{ wch: 28 }];
-  for (let i = 0; i < activeScenariosList.length * 4; i++) {
-    colWidths.push({ wch: 16 });
-  }
-  ws['!cols'] = colWidths;
-
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Compliance Summary');
+  const resultSheet = XLSX.utils.table_to_sheet(elements.complianceDataTable);
+  const resultColumnCount = elements.tableHead.rows[1]
+    ? elements.tableHead.rows[1].cells.length + 1
+    : 1;
+  resultSheet['!cols'] = [
+    { wch: 28 },
+    ...Array.from({ length: Math.max(0, resultColumnCount - 1) }, () => ({ wch: 14 }))
+  ];
+  XLSX.utils.book_append_sheet(wb, resultSheet, 'Result Table');
+  if (state.scenarioSelectionMode === 'pair' && elements.pairSavingsTable) {
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.table_to_sheet(elements.pairSavingsTable),
+      'Energy and Cost Savings'
+    );
+  }
 
-  // Scenario Summary sheet
   const summaryData = [
-    ["O'Brien360 Scenario Energy Summaries"],
-    [],
-    ['Scenario', 'Total Elec [kWh]', 'Total Gas [therm]', 'Elec [kBtu]', 'Gas [kBtu]', 'Grand Total [kBtu]', 'Elec Share (%)', 'Gas Share (%)']
+    ['Scenario', 'Role', 'Electricity [kWh]', 'Natural Gas [therms]', 'Total Energy [MBtu]', 'EUI [kBtu/ft²]', 'Electricity Cost [$ / yr]', 'Natural Gas Cost [$ / yr]', 'Total Cost [$ / yr]']
   ];
   activeScenariosList.forEach(sc => {
-    const s = sc.summary;
+    const summary = getScenarioCostSummary(sc);
     summaryData.push([
       sc.scenarioName,
-      s.totalElectricity_kWh,
-      s.totalNaturalGas_therm,
-      s.totalElectricity_kBtu,
-      s.totalNaturalGas_kBtu,
-      s.grandTotal_kBtu,
-      s.electricitySharePercent,
-      s.naturalGasSharePercent
+      sc.scenarioName === state.baselineScenario
+        ? 'Baseline'
+        : state.scenarioSelectionMode === 'pair'
+          ? 'Proposed'
+          : '',
+      summary.electricityKwh,
+      summary.naturalGasTherms,
+      summary.totalKbtu / 1000,
+      summary.buildingArea > 0 ? summary.totalKbtu / summary.buildingArea : '',
+      summary.electricityCost,
+      summary.naturalGasCost,
+      summary.totalCost
     ]);
   });
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-  wsSummary['!cols'] = [{ wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 16 }];
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'Scenario Totals');
+  wsSummary['!cols'] = [{ wch: 28 }, { wch: 12 }, ...Array.from({ length: 7 }, () => ({ wch: 20 }))];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'Scenario Summary');
 
-  const fileName = `OB360_Compliance_${runId}_${revision}.xlsx`.replace(/[^a-z0-9_\-\.]/gi, '_');
+  const fileName = `OB360_Result_${runId}_${revision}.xlsx`.replace(/[^a-z0-9_\-\.]/gi, '_');
   XLSX.writeFile(wb, fileName);
   showToast('Excel Exported!', `Downloaded: ${fileName}`, '📊');
 }
@@ -2907,14 +3097,9 @@ function exportExcelWorkbook() {
 function buildCsvRowsForExport() {
   const runId = (elements.csvRunId && elements.csvRunId.value.trim()) || 'Run_01';
   const revision = (elements.csvRevision && elements.csvRevision.value.trim()) || 'r33';
-  const scope = elements.csvExportScope ? elements.csvExportScope.value : 'all';
-
-  let exportScenarios;
-  if (scope === 'active') {
-    exportScenarios = state.scenarios.filter(s => state.selectedScenarios.includes(s.scenarioName));
-  } else {
-    exportScenarios = sortScenarios(state.scenarios);
-  }
+  const exportScenarios = sortScenariosForExport(state.scenarios.filter(scenario =>
+    state.exportScenarioNames.has(scenario.scenarioName)
+  ));
 
   if (exportScenarios.length === 0) return [];
 
@@ -3042,7 +3227,7 @@ async function downloadCSVLog() {
   const rows = buildCsvRowsForExport();
 
   if (!rows || rows.length === 0) {
-    showToast('No Scenarios', 'No scenarios matched the selected export scope.', '⚠️');
+    showToast('No Scenarios', 'Select at least one scenario to export.', '⚠️');
     return;
   }
 
@@ -3207,20 +3392,6 @@ function setupEventListeners() {
   }
 
   // Method 3 / Append Section Actions
-  if (elements.appendSelectAllBtn) {
-    elements.appendSelectAllBtn.addEventListener('click', () => {
-      if (elements.appendScenarioChecklist) {
-        elements.appendScenarioChecklist.querySelectorAll('.append-scenario-cb').forEach(cb => { cb.checked = true; });
-      }
-    });
-  }
-  if (elements.appendDeselectAllBtn) {
-    elements.appendDeselectAllBtn.addEventListener('click', () => {
-      if (elements.appendScenarioChecklist) {
-        elements.appendScenarioChecklist.querySelectorAll('.append-scenario-cb').forEach(cb => { cb.checked = false; });
-      }
-    });
-  }
   if (elements.appendDownloadCsvBtn) {
     elements.appendDownloadCsvBtn.addEventListener('click', downloadAppendedCsv);
   }
@@ -3291,6 +3462,21 @@ function setupEventListeners() {
   if (elements.hideZeroesToggle) {
     elements.hideZeroesToggle.addEventListener('change', e => { state.hideZeroes = e.target.checked; updateDashboard(); });
   }
+  [
+    { input: elements.electricityCostRate, key: 'electricityCostRate' },
+    { input: elements.naturalGasCostRate, key: 'naturalGasCostRate' }
+  ].forEach(({ input, key }) => {
+    input.addEventListener('change', () => {
+      const rate = Number(input.value);
+      if (!input.value.trim() || !Number.isFinite(rate) || rate < 0) {
+        showToast('Invalid Utility Cost', 'Enter a zero or positive utility cost.', '⚠️');
+        input.value = state[key].toString();
+        return;
+      }
+      state[key] = rate;
+      updateDashboard();
+    });
+  });
 
   // Export Buttons
   if (elements.copyExcelBtn) {
@@ -3361,6 +3547,4 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.ReportsModule && typeof window.ReportsModule.init === 'function') {
     window.ReportsModule.init();
   }
-  // Auto-load sample CSV on startup for instant live interactive dashboard
-  await loadSampleCsv();
 });

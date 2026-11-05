@@ -8,6 +8,7 @@
 // Global State
 const state = {
   serverAvailable: false,
+  sampleFileName: 'Shoebox MDL.cibd19',
   rawContent: '',
   model: null,
   activeFilter: 'missing', // 'missing' | 'fixed' | 'all'
@@ -52,7 +53,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 function initDOMElements() {
   el.fileDropzone = document.getElementById('fileDropzone');
   el.fileInput = document.getElementById('fileInput');
-  el.sampleSelect = document.getElementById('sampleSelect');
   el.btnLoadSample = document.getElementById('btnLoadSample');
   
   el.statFileName = document.getElementById('statFileName');
@@ -135,9 +135,9 @@ function initEventListeners() {
   });
 
   // Sample Load Button
-  el.btnLoadSample.addEventListener('click', () => {
-    const filename = el.sampleSelect.value;
-    if (filename) loadSampleFile(filename);
+  el.btnLoadSample.addEventListener('click', event => {
+    event.stopPropagation();
+    loadSampleFile(state.sampleFileName);
   });
 
   // Filter Tabs
@@ -272,28 +272,13 @@ async function loadSampleFileList() {
       const res = await fetch('/api/samples');
       const data = await res.json();
       if (data.success && data.samples.length > 0) {
-        el.sampleSelect.innerHTML = data.samples.map(s => `
-          <option value="${s.name}" ${s.is_default ? 'selected' : ''}>
-            ${s.name} (${(s.size_bytes / 1024).toFixed(0)} KB)
-          </option>
-        `).join('');
-
-        const defaultFile = data.samples.find(s => s.is_default) || data.samples[0];
-        if (defaultFile) {
-          await loadSampleFile(defaultFile.name);
-        }
-        return;
+        const sample = data.samples.find(item => item.is_default) || data.samples[0];
+        state.sampleFileName = sample.name;
       }
     } catch (err) {
-      console.warn('Server sample list failed, falling back to browser mode:', err);
+      console.warn('Server sample list unavailable; using the bundled sample file:', err);
     }
   }
-
-  // Standalone / GitHub Pages Mode: default sample file
-  el.sampleSelect.innerHTML = `
-    <option value="Shoebox MDL.cibd19" selected>Shoebox MDL.cibd19 (335 KB Demo)</option>
-  `;
-  await loadSampleFile('Shoebox MDL.cibd19');
 }
 
 async function loadSampleFile(filename) {

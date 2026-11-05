@@ -202,7 +202,7 @@
         <section class="card scenario-areas-card">
           <div class="card-header">
             <div class="card-title-group">
-              <h2>Building Area &amp; Category Mapping</h2>
+              <h2>Building Area &amp; Utility Cost &amp; Category Mapping</h2>
             </div>
             <span class="table-subtitle">Set building area for EUI and customize how non-zero EAp2-4/5 categories map to plot end-uses</span>
           </div>
@@ -217,7 +217,24 @@
               <div id="scenario-areas" class="scenario-areas"></div>
             </div>
 
-            <!-- Subcol B: Category Mapping -->
+            <div class="section-2-col utility-cost-subcol">
+              <div class="subcard-header">
+                <h4 class="subcard-title">Utility Cost</h4>
+                <span class="subcard-hint">Used for annual energy cost and savings</span>
+              </div>
+              <div class="utility-cost-fields">
+                <div class="utility-cost-field">
+                  <label for="electricity-cost-rate">Electricity ($/kWh)</label>
+                  <input id="electricity-cost-rate" type="number" min="0" step="0.0001" value="0.1013" required />
+                </div>
+                <div class="utility-cost-field">
+                  <label for="natural-gas-cost-rate">Natural Gas ($/therm)</label>
+                  <input id="natural-gas-cost-rate" type="number" min="0" step="0.001" value="1.283" required />
+                </div>
+              </div>
+            </div>
+
+            <!-- Subcol C: Category Mapping -->
             <div class="section-2-col category-mapping-subcol">
               <div class="subcard-header">
                 <div class="subcard-title-group">
@@ -243,6 +260,23 @@
               <select id="proposed-case-select" class="select-dropdown scenario-select"></select>
             </label>
             <button type="button" id="compare-multiple-btn" class="btn-link">Compare multiple…</button>
+            <details id="pair-savings-details" class="pair-savings-details">
+              <summary id="pair-savings-summary">Energy reduction — · Cost reduction —</summary>
+              <div class="pair-savings-table-wrap">
+                <table id="pair-savings-table" class="pair-savings-table">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>Baseline</th>
+                      <th>Proposed</th>
+                      <th>Savings</th>
+                      <th>% Reduction</th>
+                    </tr>
+                  </thead>
+                  <tbody id="pair-savings-body"></tbody>
+                </table>
+              </div>
+            </details>
           </div>
           <div id="multi-scenario-controls" class="scenario-selection-row hidden">
             <strong class="scenario-selection-title">Scenarios</strong>
@@ -346,9 +380,7 @@
         <section class="card table-card">
           <div class="card-header table-card-header">
             <div class="table-header-left">
-              <h3 id="table-title">EAp2-4/5 Performance Rating Method Compliance</h3>
-              <span class="table-subtitle">Fixed columns — 11 compliance categories · Electricity [kWh, W] · Natural Gas
-                [therm, Btu/h] · ap shown first</span>
+              <h3 id="table-title">Result Table</h3>
             </div>
             <div class="table-actions">
               <button id="copy-excel-btn" class="btn btn-accent btn-highlight"
@@ -422,11 +454,11 @@
               <input type="text" id="csv-revision" class="text-input csv-input" placeholder="e.g. r33" value="r33" />
             </div>
             <div class="csv-field-group">
-              <label for="csv-export-scope" class="input-label">Scenarios to Export</label>
-              <select id="csv-export-scope" class="select-dropdown">
-                <option value="all" selected>All Scenarios (ap, ab1–ab4 &amp; Avg)</option>
-                <option value="active">Active Selected Only</option>
-              </select>
+              <label for="csv-export-summary" class="input-label">Scenarios to Export</label>
+              <details class="multi-case-details csv-case-details">
+                <summary id="csv-export-summary">All scenarios</summary>
+                <div class="multi-case-options csv-case-options" id="csv-export-options"></div>
+              </details>
             </div>
             <button id="export-csv-btn" class="btn btn-primary csv-export-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -462,14 +494,10 @@
             <div class="append-scenario-selector">
               <div class="append-selector-header">
                 <strong>Scenarios to Append:</strong>
-                <div class="append-selector-actions">
-                  <button type="button" id="append-select-all-btn" class="btn-link">Select All</button>
-                  <span class="divider">|</span>
-                  <button type="button" id="append-deselect-all-btn" class="btn-link">Deselect All</button>
-                </div>
-              </div>
-              <div class="append-checklist-grid" id="append-scenario-checklist">
-                <!-- Dynamically populated checkboxes -->
+                <details class="multi-case-details append-case-details">
+                  <summary id="append-scenario-summary">All scenarios</summary>
+                  <div class="multi-case-options append-case-options" id="append-scenario-options"></div>
+                </details>
               </div>
             </div>
 

@@ -149,7 +149,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   initScalePresets();
   setupCanvasResize();
   await checkServerConnection();
-  loadExampleFile();
 });
 
 async function checkServerConnection() {

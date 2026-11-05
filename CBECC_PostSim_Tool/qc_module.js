@@ -1449,8 +1449,8 @@
       const [htmAb1Text, htmApText, ibdAb1Text, ibdApText, wbBuf] = await Promise.all([
         fetch('example_project_folder2/ab1/2527_Shoebox%20MDL%20-%20ab1.htm').then(r => r.text()),
         fetch('example_project_folder2/ap/2527_Shoebox%20MDL%20-%20ap.htm').then(r => r.text()),
-        fetch('example_project_folder2/2527_Shoebox%20MDL%20-%20ab1.ibd-Detail').then(r => r.text()),
-        fetch('example_project_folder2/2527_Shoebox%20MDL%20-%20ap.ibd-Detail').then(r => r.text()),
+        fetch('example_project_folder2/Shoebox%20MDL%20-%20ab1.ibd-Detail').then(r => r.text()),
+        fetch('example_project_folder2/Shoebox%20MDL%20-%20ap.ibd-Detail').then(r => r.text()),
         fetch('CBECC%20Model%20Workbook%20-%20example2.xlsm').then(r => r.arrayBuffer())
       ]);
 

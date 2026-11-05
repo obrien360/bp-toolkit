@@ -556,7 +556,7 @@ body.dark-theme .slot-badge {
 
 .section-2-grid {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: minmax(210px, 0.9fr) minmax(210px, 0.9fr) minmax(330px, 2fr);
   gap: 16px;
   align-items: start;
 }
@@ -1485,6 +1485,15 @@ body.dark-theme .seg-btn.active {
   color: var(--text-muted);
 }
 
+.scenario-area-field select {
+  width: 100%;
+}
+
+.scenario-area-field #building-area-type {
+  width: 31ch;
+  max-width: 100%;
+}
+
 .scenario-area-field input {
   width: 100%;
   min-width: 0;
@@ -1492,6 +1501,106 @@ body.dark-theme .seg-btn.active {
   border: 1px solid var(--border-color);
   background: var(--bg-input);
   color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+}
+
+.building-area-value-field input {
+  width: 31ch;
+  max-width: 100%;
+}
+
+.utility-cost-fields {
+  display: grid;
+  gap: 8px;
+}
+
+.utility-cost-field label {
+  display: block;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.utility-cost-field input {
+  width: 31ch;
+  max-width: 100%;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+}
+
+.pair-savings-details {
+  position: relative;
+  margin-left: auto;
+  color: var(--text-primary);
+}
+
+.pair-savings-details summary {
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pair-savings-details summary::marker {
+  color: var(--ob360-green);
+}
+
+.pair-savings-table-wrap {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(680px, calc(100vw - 32px));
+  overflow-x: auto;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  box-shadow: var(--card-shadow);
+}
+
+.pair-savings-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.pair-savings-table th,
+.pair-savings-table td {
+  padding: 5px 8px;
+  border: 1px solid var(--border-color);
+  text-align: right;
+}
+
+.pair-savings-table th:first-child,
+.pair-savings-table td:first-child {
+  text-align: left;
+}
+
+.pair-savings-table thead th {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.pair-savings-table .savings-total-row {
+  font-weight: 700;
+  border-top: 2px solid var(--ob360-green);
+}
+
+.pair-savings-table .savings-overall-row td:last-child {
+  background: rgba(98, 184, 164, 0.2);
+  font-weight: 700;
 }
 
 .unmapped-warning {
@@ -1794,6 +1903,48 @@ body.dark-theme .footer-address strong {
   letter-spacing: 0.04em;
   padding: 10px 8px 8px;
   border-left: 2px solid var(--border-color);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.data-table .result-category-header {
+  min-width: 180px;
+  text-align: center;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.data-table thead th.num-col {
+  text-align: center;
+}
+
+.data-table .result-sub-col {
+  text-align: center;
+  padding: 5px 6px;
+  font-size: 0.68rem;
+  line-height: 1.25;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.data-table .result-unit-col {
+  padding: 4px 6px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.66rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.data-table .result-savings-col {
+  background: rgba(77, 118, 173, 0.08);
+}
+
+.data-table .result-total-row td {
+  font-weight: 700;
+  background: var(--bg-surface);
+  border-top: 2px solid var(--ob360-green);
 }
 
 .data-table .sub-col {
@@ -2000,48 +2151,41 @@ body.dark-theme .csv-target-info code {
 
 .append-selector-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   font-size: 0.84rem;
 }
 
-.append-selector-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.csv-case-details,
+.append-case-details {
+  width: min(420px, 100%);
+  min-width: 180px;
 }
 
-.append-checklist-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
+.csv-case-details summary,
+.append-case-details summary {
+  max-width: none;
 }
 
-.append-check-item {
+.csv-case-options,
+.append-case-options {
+  width: 100%;
+}
+
+.append-case-option {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
+  gap: 7px;
+  padding: 4px;
+  color: var(--text-primary);
   font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-fast);
+  white-space: nowrap;
 }
 
-.append-check-item:hover {
-  border-color: var(--ob360-green);
-  background: var(--bg-surface-hover);
-}
-
-.append-check-item input[type="checkbox"] {
-  cursor: pointer;
+.append-case-option input {
+  margin: 0;
   accent-color: var(--ob360-green);
-  width: 16px;
-  height: 16px;
 }
 
 .append-submit-row {

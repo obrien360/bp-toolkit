@@ -440,11 +440,11 @@
     try {
       let targetUrl = '';
       if (folderPath && folderPath.includes('example_project_folder2')) {
-        targetUrl = 'example_project_folder2/2527_Shoebox%20MDL%20-%20ap%20-%20LEEDSummary.csv';
+        targetUrl = 'example_project_folder2/Shoebox%20MDL%20-%20ap%20-%20LEEDSummary.csv';
       } else if (folderPath && folderPath.includes('example_project_folder')) {
-        targetUrl = 'example_project_folder/1574_GLBH_S901G_CBECC2025%20-%20ap%20-%20LEEDSummary.csv';
+        targetUrl = 'example_project_folder/S901G_CBECC2025%20-%20ap%20-%20LEEDSummary.csv';
       } else {
-        targetUrl = 'example_project_folder2/2527_Shoebox%20MDL%20-%20ap%20-%20LEEDSummary.csv';
+        targetUrl = 'example_project_folder2/Shoebox%20MDL%20-%20ap%20-%20LEEDSummary.csv';
       }
 
       const csvText = await fetch(targetUrl).then(r => {

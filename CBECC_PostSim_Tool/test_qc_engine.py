@@ -18,8 +18,8 @@ class TestQCEngine(unittest.TestCase):
         ap_data = res['ap']
         self.assertIn('unmetHours', ap_data)
         self.assertTrue(ap_data['unmetHours']['hasWarning']) # 4 zones > 150 hrs
-        self.assertEqual(ap_data['unmetHours']['facility']['heating'], 0.0)
-        self.assertEqual(ap_data['unmetHours']['facility']['cooling'], 8760.0)
+        self.assertEqual(ap_data['unmetHours']['facility']['heating'], 0.5)
+        self.assertEqual(ap_data['unmetHours']['facility']['cooling'], 370.0)
 
         # Test Schedules
         self.assertIn('schedules', ap_data)
