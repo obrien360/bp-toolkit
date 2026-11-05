@@ -55,6 +55,42 @@ const STANDARD_MAPPED_CATEGORIES = [
   'Elevators and escalators'
 ];
 
+const COMPARABLE_PROJECT_FILTERS = [
+  {
+    key: 'projectType',
+    label: 'Project Type',
+    options: [
+      'BuiltGreen - 09', 'BuiltGreen - 12', 'BuiltGreen - 15', 'SEC C407 - 15',
+      'SEC C407 - 21', 'WSEC C407 - 18', 'WSEC C407 - 21', 'LEED-NC',
+      'LEED-Midrise V3', 'LEED-Midrise V4', 'ASHRAE 90.1-2019', 'Post Occupany',
+      'Operations and Maintainance', 'MIP', 'Renovation', 'Benchmark'
+    ]
+  },
+  { key: 'residentialHeatingType', label: 'Residential Heating Type', options: ['Electric', '25% HP', '50% HP', '75% HP', '100% HP', 'WSHP', 'Gas', 'None'] },
+  { key: 'residentialCoolingType', label: 'Residential Cooling Type', options: ['Window', '25% HP', '50% HP', '75% HP', '100% HP', 'WSHP', 'Gas', 'Portable', 'None'] },
+  { key: 'residentialVentilationType', label: 'Residential Ventilation Type', options: ['In-Unit ERV/HRV', 'Central ERV/HRV', 'SZHP', 'DOAS', 'WHF'] },
+  { key: 'corridorHeatingType', label: 'Corridor Heating Type', options: ['Electric', '25% HP', '50% HP', '75% HP', '100% HP', 'WSHP', 'Gas', 'None'] },
+  { key: 'corridorVentilationType', label: 'Corridor Ventilation Type', options: ['In-Unit ERV/HRV', 'Central ERV/HRV', 'SZHP', 'DOAS', 'WHF'] },
+  { key: 'waterHeatingType', label: 'Water Heating Type', options: ['Electric Resistance', 'Gas Condensing', 'Hybrid HPWH + Gas', 'Hybrid HPWH + ER', '100% HPWH'] }
+];
+
+const COMPARABLE_PROJECT_COLUMNS = [
+  { key: 'projectCode', label: 'Project Code #', unit: '' },
+  { key: 'simulationRun', label: 'Simulation Run', unit: '' },
+  { key: 'totalConditionedFloorArea', label: 'Total Conditioned Floor Area', unit: 'ft²' },
+  { key: 'averageUnitArea', label: 'Average Unit Area', unit: 'ft²' },
+  { key: 'conditionedAreaToTotalAreaRatio', label: 'Conditioned Area to Total Area Ratio', unit: 'Fraction' },
+  { key: 'verticalSkinToFloorRatio', label: 'Vertical Skin to Floor Ratio', unit: 'Fraction' },
+  { key: 'windowsToFloorRatio', label: 'Windows to Floor Ratio', unit: 'Fraction' },
+  { key: 'totalWindowsToWallRatio', label: 'Total Windows to Wall Ratio', unit: 'Fraction' },
+  { key: 'residentialWindowsToWallRatio', label: 'Residential Windows to Wall Ratio', unit: 'Fraction' },
+  { key: 'unitCount', label: '# of units', unit: 'units' },
+  { key: 'peoplePer1000', label: 'Ppl per 1000ft²', unit: '' },
+  { key: 'resOaStatic', label: 'Res OA (Static)', unit: 'CFM/ft²' },
+  { key: 'corridorOa', label: 'Corridor OA', unit: 'CFM/ft²' },
+  { key: 'totalEui', label: 'Total EUI', unit: 'kBtu/ft²-yr' }
+];
+
 const END_USE_CATEGORY_ORDER = new Map(
   STANDARD_MAPPED_CATEGORIES.map((category, index) => [category.toLowerCase(), index])
 );
@@ -606,6 +642,12 @@ const state = {
   loadedCsv: null,           // { file, name, text, scenarios, rows, mappings, colDefs, isThreeHeader }
   loadedFolder: null,        // { files, name, rawScenarios }
   loadedWorkbook: null,      // { file, name }
+  loadedEuiComparisonWorkbook: null,
+  currentEuiInfo: null,
+  historicalEuiProjects: [],
+  comparableFilteredProjects: [],
+  comparableColumnFilters: {},
+  comparableFilterPopupColumn: null,
 
   categoryMapping: {},       // { [rawCat___fuel]: { userCategory, locked, rawCategory, fuel, source } }
   visibleCategories: new Set(), // Set of active mapped categories to display in chart
@@ -679,8 +721,20 @@ const elements = {
   wbStatusLabel: document.getElementById('wb-status-label'),
   clearWbBtn: document.getElementById('clear-wb-btn'),
 
-  // Selection 4: EUI Comparison Workbook (Placeholder)
+  // Selection 4: EUI Comparison Workbook
   slotEuiComp: document.getElementById('slot-eui-comp'),
+  dropZoneEuiComp: document.getElementById('drop-zone-eui-comp'),
+  browserEuiCompInput: document.getElementById('browser-eui-comp-input'),
+  browseEuiCompBtn: document.getElementById('browse-eui-comp-btn'),
+  euiCompStatusLabel: document.getElementById('eui-comp-status-label'),
+  clearEuiCompBtn: document.getElementById('clear-eui-comp-btn'),
+  comparableProjectCount: document.getElementById('comparable-project-count'),
+  comparableProjectFilters: document.getElementById('comparable-project-filters'),
+  comparableFilterPopup: null,
+  comparableProjectStatus: document.getElementById('comparable-project-status'),
+  comparableProjectTableWrap: document.getElementById('comparable-project-table-wrap'),
+  comparableProjectTableHead: document.getElementById('comparable-project-table-head'),
+  comparableProjectTableBody: document.getElementById('comparable-project-table-body'),
 
   unmappedWarning: document.getElementById('unmapped-warning'),
   scenarioAreas: document.getElementById('scenario-areas'),
@@ -1569,6 +1623,448 @@ function renderCategoryFilterOptions() {
       : 'No categories selected';
 }
 
+function normalizeWorkbookHeader(value) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function workbookNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const parsed = Number(String(value).replace(/,/g, '').replace(/%$/, '').trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildWorkbookHeaderMap(headerRow) {
+  const headers = new Map();
+  headerRow.forEach((value, index) => {
+    const key = normalizeWorkbookHeader(value);
+    if (key && !headers.has(key)) headers.set(key, index);
+  });
+  return headers;
+}
+
+function requireWorkbookColumn(headerMap, header, aliases = []) {
+  const index = [header, ...aliases]
+    .map(candidate => headerMap.get(normalizeWorkbookHeader(candidate)))
+    .find(candidate => candidate !== undefined);
+  if (index === undefined) throw new Error(`Missing required column "${header}"`);
+  return index;
+}
+
+async function readWorkbookRows(file, sheetName) {
+  if (typeof XLSX === 'undefined') throw new Error('The Excel workbook parser is unavailable.');
+  const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
+  const worksheet = workbook.Sheets[sheetName];
+  if (!worksheet) throw new Error(`Workbook does not contain a "${sheetName}" worksheet.`);
+  return XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: null });
+}
+
+async function parseCurrentProjectEuiInfo(file) {
+  const rows = await readWorkbookRows(file, 'EUI Comp Info');
+  if (rows.length < 5) throw new Error('The "EUI Comp Info" worksheet does not contain baseline and proposed rows.');
+  const headerMap = buildWorkbookHeaderMap(rows[1] || []);
+  const columns = {
+    totalConditionedFloorArea: requireWorkbookColumn(headerMap, 'Conditioned  Floor Area'),
+    unitCount: requireWorkbookColumn(headerMap, '# of units'),
+    peoplePer1000: requireWorkbookColumn(headerMap, 'Ppl per 1000ft2'),
+    resOaStatic: requireWorkbookColumn(headerMap, 'Res OA (Static)'),
+    corridorOa: requireWorkbookColumn(headerMap, 'Corridor OA'),
+    averageUnitArea: requireWorkbookColumn(headerMap, 'Average Unit Area'),
+    conditionedAreaToTotalAreaRatio: requireWorkbookColumn(headerMap, 'Conditioned Area to Total Area Ratio'),
+    verticalSkinToFloorRatio: requireWorkbookColumn(headerMap, 'Vertical Skin to Floor Ratio'),
+    windowsToFloorRatio: requireWorkbookColumn(headerMap, 'Windows to Floor Ratio'),
+    totalWindowsToWallRatio: requireWorkbookColumn(headerMap, 'Total Windows to Wall Ratio'),
+    residentialWindowsToWallRatio: requireWorkbookColumn(headerMap, 'Residential Windows to Wall Ratio')
+  };
+  const projectRows = new Map();
+  rows.slice(3, 5).forEach(row => {
+    const role = normalizeWorkbookHeader(row[0]);
+    if (role !== 'baseline' && role !== 'proposed') return;
+    projectRows.set(role, Object.fromEntries(
+      Object.entries(columns).map(([key, index]) => [key, workbookNumber(row[index])])
+    ));
+  });
+  if (!projectRows.size) throw new Error('No Baseline or Proposed project rows were found.');
+  return projectRows;
+}
+
+function parseHistoricalEuiProjects(rows) {
+  if (rows.length < 7) throw new Error('The "Project Summary - New" worksheet does not contain project records.');
+  const headerMap = buildWorkbookHeaderMap(rows[4] || []);
+  const columns = {
+    projectCode: requireWorkbookColumn(headerMap, 'Project Code #'),
+    simulationRun: requireWorkbookColumn(headerMap, 'Simulation Run'),
+    projectType: requireWorkbookColumn(headerMap, 'Project Type'),
+    residentialHeatingType: requireWorkbookColumn(headerMap, 'Residential Heating Type'),
+    residentialCoolingType: requireWorkbookColumn(headerMap, 'Residential Cooling Type'),
+    residentialVentilationType: requireWorkbookColumn(headerMap, 'Residential Ventilation Type'),
+    corridorHeatingType: requireWorkbookColumn(headerMap, 'Corridor Heating Type'),
+    corridorVentilationType: requireWorkbookColumn(headerMap, 'Corridor Ventilation Type'),
+    waterHeatingType: requireWorkbookColumn(headerMap, 'Water Heating Type'),
+    totalConditionedFloorArea: requireWorkbookColumn(headerMap, 'Total Conditioned Floor Area', ['Conditioned Floor Area']),
+    averageUnitArea: requireWorkbookColumn(headerMap, 'Average Unit Area'),
+    conditionedAreaToTotalAreaRatio: requireWorkbookColumn(headerMap, 'Conditioned Area to Total Area Ratio'),
+    verticalSkinToFloorRatio: requireWorkbookColumn(headerMap, 'Vertical Skin to Floor Ratio'),
+    windowsToFloorRatio: requireWorkbookColumn(headerMap, 'Windows to Floor Ratio'),
+    totalWindowsToWallRatio: requireWorkbookColumn(headerMap, 'Total Windows to Wall Ratio'),
+    residentialWindowsToWallRatio: requireWorkbookColumn(headerMap, 'Residential Windows to Wall Ratio'),
+    unitCount: requireWorkbookColumn(headerMap, '# of units'),
+    peoplePer1000: requireWorkbookColumn(headerMap, 'Ppl per 1000ft2'),
+    resOaStatic: requireWorkbookColumn(headerMap, 'Res OA (Static)'),
+    corridorOa: requireWorkbookColumn(headerMap, 'Corridor OA')
+  };
+  const categoryHeaders = rows[4] || [];
+  const energyColumns = [
+    ...Array.from({ length: 12 }, (_, offset) => 48 + offset),
+    ...Array.from({ length: 12 }, (_, offset) => 61 + offset)
+  ].map(index => ({
+    index,
+    fuel: index <= 59 ? 'elec' : 'gas',
+    category: String(categoryHeaders[index] || '').trim()
+  })).filter(column => column.category &&
+    !['total electric', 'total gas'].includes(normalizeWorkbookHeader(column.category)));
+
+  if (energyColumns.length === 0) throw new Error('No end-use energy columns were found in AW:BU.');
+
+  return rows.slice(6).flatMap(row => {
+    const projectCode = row[columns.projectCode];
+    const simulationRun = row[columns.simulationRun];
+    if (projectCode === null || projectCode === undefined || simulationRun === null || simulationRun === undefined) return [];
+
+    const project = {};
+    Object.entries(columns).forEach(([key, index]) => {
+      project[key] = ['projectCode', 'simulationRun', 'projectType', 'residentialHeatingType',
+        'residentialCoolingType', 'residentialVentilationType', 'corridorHeatingType',
+        'corridorVentilationType', 'waterHeatingType'].includes(key)
+        ? String(row[index] ?? '').trim()
+        : workbookNumber(row[index]);
+    });
+
+    const categoryMap = {};
+    energyColumns.forEach(({ index, fuel, category }) => {
+      const target = normalizeWorkbookHeader(category) === 'hp aux' ? 'Space Heating' : category;
+      if (!categoryMap[target]) {
+        categoryMap[target] = {
+          rawCategory: target, label: target, isTotal: false,
+          elecKwh: 0, gasTherm: 0, elecKbtu: 0, gasKbtu: 0, totalKbtu: 0
+        };
+      }
+      const value = workbookNumber(row[index]) || 0;
+      if (fuel === 'elec') categoryMap[target].elecKbtu += value;
+      else categoryMap[target].gasKbtu += value;
+    });
+    Object.values(categoryMap).forEach(category => {
+      category.totalKbtu = category.elecKbtu + category.gasKbtu;
+      category.elecKwh = category.elecKbtu / CONVERSIONS.KWH_TO_KBTU;
+      category.gasTherm = category.gasKbtu / CONVERSIONS.THERM_TO_KBTU;
+    });
+
+    const area = project.totalConditionedFloorArea;
+    project.categoryMap = categoryMap;
+    project.totalEui = area > 0
+      ? Object.values(categoryMap).reduce((sum, category) => sum + category.totalKbtu, 0) / area
+      : null;
+    return [project];
+  });
+}
+
+function createComparableFilterControls() {
+  elements.comparableProjectFilters.replaceChildren(...COMPARABLE_PROJECT_FILTERS.map(filter => {
+    const wrapper = document.createElement('label');
+    wrapper.className = 'comparable-filter-field';
+    wrapper.htmlFor = `comparable-filter-${filter.key}`;
+    const label = document.createElement('span');
+    label.textContent = `${filter.label}${filter.key === 'projectType' ? ' *' : ''}`;
+    const select = document.createElement('select');
+    select.id = `comparable-filter-${filter.key}`;
+    select.dataset.filterKey = filter.key;
+    select.className = 'select-dropdown';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = filter.key === 'projectType' ? 'Select Project Type' : 'Any';
+    select.append(placeholder);
+    filter.options.forEach(value => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      select.append(option);
+    });
+    wrapper.append(label, select);
+    return wrapper;
+  }));
+  elements.comparableFilterPopup = document.createElement('div');
+  elements.comparableFilterPopup.className = 'comparable-filter-popup hidden';
+  elements.comparableFilterPopup.setAttribute('role', 'group');
+  elements.comparableFilterPopup.addEventListener('change', event => {
+    const checkbox = event.target.closest('[data-comparable-filter-value]');
+    if (!checkbox || !state.comparableFilterPopupColumn) return;
+    const columnKey = state.comparableFilterPopupColumn;
+    const selected = new Set(state.comparableColumnFilters[columnKey] || []);
+    if (checkbox.checked) selected.add(checkbox.value);
+    else selected.delete(checkbox.value);
+    state.comparableColumnFilters[columnKey] = selected;
+    updateComparableProjectView();
+  });
+  elements.comparableFilterPopup.addEventListener('input', event => {
+    if (event.target.matches('.comparable-filter-search')) {
+      filterComparablePopupOptions(event.target.value);
+    }
+  });
+  document.body.append(elements.comparableFilterPopup);
+}
+
+function getComparableFilterValue(key) {
+  return document.getElementById(`comparable-filter-${key}`)?.value || '';
+}
+
+function filterHistoricalProjects(projects, excludedColumnKey = null) {
+  const projectType = getComparableFilterValue('projectType');
+  return projects.filter(project => {
+    if (project.projectType !== projectType) return false;
+    if (COMPARABLE_PROJECT_FILTERS.some(filter =>
+      filter.key !== 'projectType' && getComparableFilterValue(filter.key) &&
+      project[filter.key] !== getComparableFilterValue(filter.key)
+    )) return false;
+
+    for (const column of COMPARABLE_PROJECT_COLUMNS) {
+      if (column.key === excludedColumnKey) continue;
+      const selected = state.comparableColumnFilters[column.key];
+      if (!selected?.size) continue;
+      if (!selected.has(getComparableFilterValueKey(project[column.key], column.key))) return false;
+    }
+    return true;
+  });
+}
+
+function getComparableColumnDecimals(columnKey) {
+  if (['totalConditionedFloorArea', 'averageUnitArea', 'unitCount'].includes(columnKey)) return 0;
+  return columnKey === 'totalEui' ? 1 : 3;
+}
+
+function getComparableFilterValueKey(value, columnKey) {
+  if (value === null || value === undefined || value === '') return '__blank__';
+  if (typeof value === 'number') return `number:${formatNum(value, getComparableColumnDecimals(columnKey))}`;
+  return `text:${String(value)}`;
+}
+
+function formatComparableFilterOption(value, columnKey) {
+  if (value === null || value === undefined || value === '') return '(Blanks)';
+  if (typeof value === 'number') return formatComparableValue(value, getComparableColumnDecimals(columnKey));
+  return String(value);
+}
+
+function compareComparableFilterValues(a, b) {
+  if (a === null || a === undefined || a === '') return b === null || b === undefined || b === '' ? 0 : -1;
+  if (b === null || b === undefined || b === '') return 1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function getComparableFilterOptions(columnKey) {
+  const projects = filterHistoricalProjects(state.historicalEuiProjects, columnKey);
+  const values = new Map();
+  projects.forEach(project => {
+    const value = project[columnKey];
+    values.set(getComparableFilterValueKey(value, columnKey), value);
+  });
+  (state.comparableColumnFilters[columnKey] || []).forEach(key => {
+    if (values.has(key)) return;
+    const selectedProject = state.historicalEuiProjects.find(project =>
+      getComparableFilterValueKey(project[columnKey], columnKey) === key
+    );
+    if (selectedProject) values.set(key, selectedProject[columnKey]);
+  });
+  return Array.from(values.values()).sort(compareComparableFilterValues);
+}
+
+function filterComparablePopupOptions(query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  elements.comparableFilterPopup.querySelectorAll('.comparable-filter-option').forEach(option => {
+    option.classList.toggle('hidden', normalizedQuery && !option.dataset.searchText.includes(normalizedQuery));
+  });
+}
+
+function positionComparableFilterPopup(button) {
+  const popup = elements.comparableFilterPopup;
+  const bounds = button.getBoundingClientRect();
+  popup.classList.remove('hidden');
+  const popupBounds = popup.getBoundingClientRect();
+  const left = Math.max(8, Math.min(bounds.left, window.innerWidth - popupBounds.width - 8));
+  const top = Math.min(bounds.bottom + 4, window.innerHeight - popupBounds.height - 8);
+  popup.style.left = `${left}px`;
+  popup.style.top = `${Math.max(8, top)}px`;
+}
+
+function openComparableFilterPopup(column, button) {
+  if (state.comparableFilterPopupColumn === column.key &&
+      !elements.comparableFilterPopup.classList.contains('hidden')) {
+    closeComparableFilterPopup();
+    return;
+  }
+  state.comparableFilterPopupColumn = column.key;
+  const selected = state.comparableColumnFilters[column.key] || new Set();
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.className = 'comparable-filter-search';
+  search.placeholder = `Search ${column.label.toLowerCase()}`;
+  search.setAttribute('aria-label', `Search ${column.label} filter options`);
+
+  const actions = document.createElement('div');
+  actions.className = 'comparable-filter-actions';
+  const clearButton = document.createElement('button');
+  clearButton.type = 'button';
+  clearButton.className = 'btn-link';
+  clearButton.textContent = 'Clear filter';
+  clearButton.addEventListener('click', () => {
+    state.comparableColumnFilters[column.key] = new Set();
+    closeComparableFilterPopup();
+    updateComparableProjectView();
+  });
+  actions.append(clearButton);
+
+  const options = document.createElement('div');
+  options.className = 'comparable-filter-options';
+  getComparableFilterOptions(column.key).forEach(value => {
+    const valueKey = getComparableFilterValueKey(value, column.key);
+    const label = document.createElement('label');
+    label.className = 'comparable-filter-option';
+    label.dataset.searchText = formatComparableFilterOption(value, column.key).toLowerCase();
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = valueKey;
+    checkbox.dataset.comparableFilterValue = '';
+    checkbox.checked = selected.has(valueKey);
+    label.append(checkbox, document.createTextNode(formatComparableFilterOption(value, column.key)));
+    options.append(label);
+  });
+  elements.comparableFilterPopup.replaceChildren(search, actions, options);
+  positionComparableFilterPopup(button);
+  search.focus({ preventScroll: true });
+}
+
+function closeComparableFilterPopup() {
+  if (!elements.comparableFilterPopup) return;
+  elements.comparableFilterPopup.classList.add('hidden');
+  state.comparableFilterPopupColumn = null;
+}
+
+function formatComparableValue(value, decimals = 2) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return formatNum(value, decimals);
+}
+
+function getComparableProjectCellValue(project, column) {
+  const value = project[column.key];
+  if (column.key === 'projectCode' || column.key === 'simulationRun') return value || '';
+  return formatComparableValue(value, getComparableColumnDecimals(column.key));
+}
+
+function createComparableTableRow(project, className = '') {
+  const row = document.createElement('tr');
+  if (className) row.className = className;
+  COMPARABLE_PROJECT_COLUMNS.forEach(column => {
+    const cell = document.createElement('td');
+    cell.textContent = getComparableProjectCellValue(project, column);
+    row.append(cell);
+  });
+  return row;
+}
+
+function getCurrentComparableReferences() {
+  if (!state.currentEuiInfo) return [];
+  const references = [];
+  const referenceRoles = [
+    { role: 'baseline', label: 'Current Baseline', scenarioName: state.baselineScenario, className: 'current-baseline-row' },
+    { role: 'proposed', label: 'Current Proposed', scenarioName: state.proposedScenario, className: 'current-proposed-row' }
+  ];
+  referenceRoles.forEach(reference => {
+    if (!reference.scenarioName || !state.selectedScenarios.includes(reference.scenarioName)) return;
+    if (references.some(existing => existing.scenarioName === reference.scenarioName)) return;
+    const info = state.currentEuiInfo.get(reference.role);
+    if (!info) return;
+    const scenario = state.scenarios.find(item => item.scenarioName === reference.scenarioName);
+    references.push({
+      ...info,
+      projectCode: '',
+      simulationRun: reference.label,
+      totalEui: info.totalConditionedFloorArea > 0 && scenario
+        ? scenario.summary.grandTotal_kBtu / info.totalConditionedFloorArea
+        : null,
+      className: reference.className,
+      scenarioName: reference.scenarioName
+    });
+  });
+  return references;
+}
+
+function renderComparableProjectTable() {
+  const projectType = getComparableFilterValue('projectType');
+  const shouldShow = Boolean(state.loadedEuiComparisonWorkbook && projectType);
+  elements.comparableProjectTableWrap.classList.toggle('hidden', !shouldShow);
+  elements.comparableProjectTableHead.replaceChildren();
+  elements.comparableProjectTableBody.replaceChildren();
+  if (!shouldShow) return;
+
+  const labelsRow = document.createElement('tr');
+  const unitsRow = document.createElement('tr');
+  labelsRow.className = 'comparable-table-labels';
+  unitsRow.className = 'comparable-table-units';
+  COMPARABLE_PROJECT_COLUMNS.forEach(column => {
+    const heading = document.createElement('th');
+    heading.scope = 'col';
+    const headingLabel = document.createElement('span');
+    headingLabel.className = 'comparable-column-title';
+    headingLabel.textContent = column.label;
+    heading.append(headingLabel);
+    labelsRow.append(heading);
+    const unit = document.createElement('th');
+    const filterButton = document.createElement('button');
+    filterButton.type = 'button';
+    filterButton.className = 'comparable-unit-filter';
+    filterButton.dataset.comparableColumn = column.key;
+    const activeFilter = state.comparableColumnFilters[column.key];
+    const isFiltered = Boolean(activeFilter?.size);
+    filterButton.classList.toggle('is-filtered', isFiltered);
+    filterButton.setAttribute('aria-pressed', String(isFiltered));
+    filterButton.setAttribute('aria-label', `Filter ${column.label}`);
+    filterButton.title = `Filter ${column.label}`;
+    filterButton.textContent = `${isFiltered ? `${activeFilter.size} selected` : (column.unit || 'All')} ▾`;
+    unit.append(filterButton);
+    unitsRow.append(unit);
+  });
+  elements.comparableProjectTableHead.append(labelsRow, unitsRow);
+
+  const referenceRows = getCurrentComparableReferences();
+  referenceRows.forEach(reference => {
+    elements.comparableProjectTableBody.append(
+      createComparableTableRow(reference, `current-reference-row ${reference.className}`)
+    );
+  });
+  state.comparableFilteredProjects.forEach(project => {
+    elements.comparableProjectTableBody.append(createComparableTableRow(project));
+  });
+}
+
+function updateComparableProjectView() {
+  const projectType = getComparableFilterValue('projectType');
+  if (!state.loadedEuiComparisonWorkbook) {
+    elements.comparableProjectCount.textContent = 'Workbook not loaded';
+    elements.comparableProjectStatus.textContent = 'Load an EUI Comparison Workbook and select a Project Type to view comparable projects.';
+    state.comparableFilteredProjects = [];
+  } else if (!projectType) {
+    elements.comparableProjectCount.textContent = `${state.historicalEuiProjects.length.toLocaleString()} simulation runs`;
+    elements.comparableProjectStatus.textContent = 'Select a Project Type to display comparable projects.';
+    state.comparableFilteredProjects = [];
+  } else {
+    state.comparableFilteredProjects = filterHistoricalProjects(state.historicalEuiProjects);
+    elements.comparableProjectCount.textContent = `${state.comparableFilteredProjects.length.toLocaleString()} matching runs`;
+    elements.comparableProjectStatus.textContent = state.currentEuiInfo
+      ? `${state.comparableFilteredProjects.length.toLocaleString()} historical simulation runs match the selected filters.`
+      : `${state.comparableFilteredProjects.length.toLocaleString()} historical simulation runs match. Load the CBECC Model Workbook to show current-project characteristics.`;
+  }
+  updateDashboard();
+}
+
 // =============================================================================
 // File Selection Handlers (Section 1: 4 Selections in 1 Row)
 // =============================================================================
@@ -1692,6 +2188,15 @@ async function handleWorkbookUpload(file) {
   }
   if (elements.clearWbBtn) elements.clearWbBtn.classList.remove('hidden');
 
+  let euiInfoMessage = '';
+  try {
+    state.currentEuiInfo = await parseCurrentProjectEuiInfo(file);
+    euiInfoMessage = ' Current-project comparison information was extracted.';
+  } catch (err) {
+    state.currentEuiInfo = null;
+    euiInfoMessage = ` Current-project comparison information could not be read: ${err.message}`;
+  }
+
   if (window.QCModule && typeof window.QCModule.handleWorkbookFile === 'function') {
     window.QCModule.handleWorkbookFile(file);
   }
@@ -1699,16 +2204,51 @@ async function handleWorkbookUpload(file) {
     window.CBECC_SHARED.setWorkbook(file, 'compliance');
   }
 
-  showToast('Workbook Loaded', `Loaded ${file.name} for QC & comparison!`, '📗');
+  updateComparableProjectView();
+  showToast('Workbook Loaded', `Loaded ${file.name} for QC.${euiInfoMessage}`, state.currentEuiInfo ? '📗' : '⚠️');
 }
 
 function clearWorkbookSelection() {
   state.loadedWorkbook = null;
+  state.currentEuiInfo = null;
   if (elements.slotCbeccWb) elements.slotCbeccWb.classList.remove('active-loaded');
   if (elements.wbStatusLabel) elements.wbStatusLabel.textContent = 'CBECC Model Workbook (.xlsm)';
   if (elements.clearWbBtn) elements.clearWbBtn.classList.add('hidden');
   if (elements.browserWbInput) elements.browserWbInput.value = '';
+  updateComparableProjectView();
   showToast('Workbook Cleared', 'Removed loaded CBECC Model Workbook', 'ℹ️');
+}
+
+async function handleEuiComparisonWorkbookUpload(file) {
+  if (!file) return;
+  try {
+    const rows = await readWorkbookRows(file, 'Project Summary - New');
+    const projects = parseHistoricalEuiProjects(rows);
+    state.loadedEuiComparisonWorkbook = { file, name: file.name };
+    state.historicalEuiProjects = projects;
+    state.comparableColumnFilters = {};
+    closeComparableFilterPopup();
+    if (elements.slotEuiComp) elements.slotEuiComp.classList.add('active-loaded');
+    if (elements.euiCompStatusLabel) elements.euiCompStatusLabel.textContent = file.name;
+    if (elements.clearEuiCompBtn) elements.clearEuiCompBtn.classList.remove('hidden');
+    updateComparableProjectView();
+    showToast('Comparison Workbook Loaded', `Loaded ${projects.length.toLocaleString()} historical simulation runs.`, '📈');
+  } catch (err) {
+    showToast('Comparison Workbook Failed', `Could not read ${file.name}: ${err.message}`, '❌');
+  }
+}
+
+function clearEuiComparisonWorkbook() {
+  state.loadedEuiComparisonWorkbook = null;
+  state.historicalEuiProjects = [];
+  state.comparableFilteredProjects = [];
+  state.comparableColumnFilters = {};
+  closeComparableFilterPopup();
+  if (elements.slotEuiComp) elements.slotEuiComp.classList.remove('active-loaded');
+  if (elements.euiCompStatusLabel) elements.euiCompStatusLabel.textContent = 'Select comparison workbook';
+  if (elements.clearEuiCompBtn) elements.clearEuiCompBtn.classList.add('hidden');
+  if (elements.browserEuiCompInput) elements.browserEuiCompInput.value = '';
+  updateComparableProjectView();
 }
 
 async function loadSampleWorkbook() {
@@ -2615,6 +3155,7 @@ function updatePairSavingsOverview() {
 function updateDashboard() {
   const activeScenariosList = getCurrentResultScenarios();
   updatePairSavingsOverview();
+  renderComparableProjectTable();
 
   if (activeScenariosList.length === 0) return;
 
@@ -2716,7 +3257,9 @@ function getChartCategories(scenarios) {
   const allCats = sortEndUseCategories(Array.from(catSet));
   const filtered = allCats.filter(cat => {
     // 1. Filter by user selection in filter chips
-    if (!state.visibleCategories.has(cat)) {
+    const isMiscLoad = cat === 'Misc Load' &&
+      (state.visibleCategories.has('Receptacle Equipment') || state.visibleCategories.has('Elevators and escalators'));
+    if (!state.visibleCategories.has(cat) && !isMiscLoad) {
       return false;
     }
     // 2. Hide zero rows if enabled
@@ -2736,8 +3279,48 @@ function getChartCategories(scenarios) {
   }));
 }
 
+function getComparableChartScenarios(scenarios) {
+  const projectType = getComparableFilterValue('projectType');
+  if (!state.loadedEuiComparisonWorkbook || !projectType) return scenarios;
+
+  const currentArea = state.currentEuiInfo?.get('baseline')?.totalConditionedFloorArea ||
+    state.currentEuiInfo?.get('proposed')?.totalConditionedFloorArea;
+  const currentScenarios = scenarios.map(scenario => {
+    const categoryMap = { ...(scenario.categoryMap || {}) };
+    const receptacle = categoryMap['Receptacle Equipment'];
+    const elevators = categoryMap['Elevators and escalators'];
+    if (receptacle || elevators) {
+      categoryMap['Misc Load'] = {
+        rawCategory: 'Misc Load',
+        label: 'Misc Load',
+        isTotal: false,
+        elecKwh: (receptacle?.elecKwh || 0) + (elevators?.elecKwh || 0),
+        gasTherm: (receptacle?.gasTherm || 0) + (elevators?.gasTherm || 0),
+        elecKbtu: (receptacle?.elecKbtu || 0) + (elevators?.elecKbtu || 0),
+        gasKbtu: (receptacle?.gasKbtu || 0) + (elevators?.gasKbtu || 0),
+        totalKbtu: (receptacle?.totalKbtu || 0) + (elevators?.totalKbtu || 0)
+      };
+      delete categoryMap['Receptacle Equipment'];
+      delete categoryMap['Elevators and escalators'];
+    }
+    return {
+      ...scenario,
+      categoryMap,
+      buildingArea: currentArea > 0 ? currentArea : scenario.buildingArea
+    };
+  });
+
+  const historicalScenarios = state.comparableFilteredProjects.map(project => ({
+    scenarioName: `${project.projectCode} · ${project.simulationRun}`,
+    buildingArea: project.totalConditionedFloorArea || 0,
+    categoryMap: project.categoryMap
+  }));
+  return [...currentScenarios, ...historicalScenarios];
+}
+
 function updateChart(scenarios) {
   if (state.chartInstance) { state.chartInstance.destroy(); }
+  scenarios = getComparableChartScenarios(scenarios);
 
   const displayUnit = getDisplayUnitLabel();
   elements.chartUnitBadge.textContent = `Units: ${displayUnit}`;
@@ -3302,6 +3885,24 @@ function showToast(title, message, icon = '✅') {
 // =============================================================================
 
 function setupEventListeners() {
+  createComparableFilterControls();
+  elements.comparableProjectFilters.addEventListener('change', updateComparableProjectView);
+  elements.comparableProjectTableHead.addEventListener('click', event => {
+    const button = event.target.closest('[data-comparable-column]');
+    if (!button) return;
+    const column = COMPARABLE_PROJECT_COLUMNS.find(item => item.key === button.dataset.comparableColumn);
+    if (column) openComparableFilterPopup(column, button);
+  });
+  document.addEventListener('pointerdown', event => {
+    if (!event.target.closest('.comparable-filter-popup, [data-comparable-column]')) {
+      closeComparableFilterPopup();
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeComparableFilterPopup();
+  });
+  document.addEventListener('scroll', closeComparableFilterPopup, true);
+
   // Theme Toggle
   elements.themeToggleBtn.addEventListener('click', () => {
     document.body.classList.toggle('dark-theme');
@@ -3388,6 +3989,29 @@ function setupEventListeners() {
       e.preventDefault();
       elements.dropZoneWb.classList.remove('dragover');
       if (e.dataTransfer.files.length > 0) handleWorkbookUpload(e.dataTransfer.files[0]);
+    });
+  }
+
+  // Slot 4: EUI Comparison Workbook
+  if (elements.browseEuiCompBtn && elements.browserEuiCompInput) {
+    elements.browseEuiCompBtn.addEventListener('click', () => elements.browserEuiCompInput.click());
+    elements.browserEuiCompInput.addEventListener('change', e => {
+      if (e.target.files.length > 0) handleEuiComparisonWorkbookUpload(e.target.files[0]);
+    });
+  }
+  if (elements.clearEuiCompBtn) {
+    elements.clearEuiCompBtn.addEventListener('click', clearEuiComparisonWorkbook);
+  }
+  if (elements.dropZoneEuiComp) {
+    elements.dropZoneEuiComp.addEventListener('dragover', e => {
+      e.preventDefault();
+      elements.dropZoneEuiComp.classList.add('dragover');
+    });
+    elements.dropZoneEuiComp.addEventListener('dragleave', () => elements.dropZoneEuiComp.classList.remove('dragover'));
+    elements.dropZoneEuiComp.addEventListener('drop', e => {
+      e.preventDefault();
+      elements.dropZoneEuiComp.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) handleEuiComparisonWorkbookUpload(e.dataTransfer.files[0]);
     });
   }
 

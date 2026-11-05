@@ -27,6 +27,7 @@ wheels/
 # Scratch & temporary dev files
 scratch/
 PDF_to_CAD_Tool/output_cad/
+CBECC_PostSim_Tool/Project EUI Comparison WrkBk.xlsx
 
 # OS generated files
 .DS_Store

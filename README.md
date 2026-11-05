@@ -39,6 +39,7 @@ A collection of internal engineering, sustainability, and computational geometry
 - Extracts and aggregates CBECC / LEED EAp2-4/5 Performance Rating Method compliance data from simulation output HTML reports (`ap`, `ab1`, `ab2`, `ab3`, `ab4`).
 - Parses end-use breakdowns for Electricity and Natural Gas.
 - Supports dynamic baseline averaging (ab1–ab4).
+- **Comparable Project EUI**: Filters historical simulation runs by project and system type, displays current-project characteristics from the CBECC Model Workbook, and overlays matching end-use EUI in the results chart. The historical comparison workbook is local-only and ignored by Git.
 - Exports formatted reports matching the LEED standard template (CSV and multi-tab Excel).
 - Interactive Chart.js visual summary.
 - **Model QC Workspace**:

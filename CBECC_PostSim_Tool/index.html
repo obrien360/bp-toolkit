@@ -15,7 +15,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <!-- SheetJS for Native Excel (.xlsx) Export (offline local bundle) -->
   <script src="assets/xlsx.full.min.js"></script>
-  <link rel="stylesheet" href="index.css?v=2.2">
+  <link rel="stylesheet" href="index.css?v=2.4">
 </head>
 
 <body class="light-theme">
@@ -170,19 +170,19 @@
                 </div>
               </div>
 
-              <!-- Selection 4: EUI Comparison Workbook (Placeholder) -->
-              <div class="selection-slot slot-disabled" id="slot-eui-comp">
+              <!-- Selection 4: EUI Comparison Workbook -->
+              <div class="selection-slot" id="slot-eui-comp">
                 <div class="slot-header">
                   <h4>EUI Comparison Workbook</h4>
-                  <span class="badge badge-subtle">Placeholder</span>
+                  <button type="button" class="slot-clear-btn hidden" id="clear-eui-comp-btn" title="Clear EUI Comparison Workbook">×</button>
                 </div>
-                <div class="compact-drop-zone disabled-zone">
+                <div class="compact-drop-zone" id="drop-zone-eui-comp">
+                  <input type="file" id="browser-eui-comp-input" accept=".xlsx" class="hidden-file-input" />
                   <div class="compact-drop-content">
                     <div class="compact-drop-icon">📈</div>
-                    <div class="compact-drop-label">Historical Projects Data</div>
+                    <div class="compact-drop-label" id="eui-comp-status-label">Select comparison workbook</div>
                     <div class="compact-slot-actions">
-                      <button type="button" class="btn btn-sm btn-outline" disabled
-                        title="Compare EUI by category with previous projects (Next update)">Coming Soon</button>
+                      <button type="button" id="browse-eui-comp-btn" class="btn btn-sm btn-primary">Browse .xlsx</button>
                     </div>
                   </div>
                 </div>
@@ -288,6 +288,26 @@
               <div id="multi-case-options" class="multi-case-options"></div>
             </details>
             <button type="button" id="pair-scenario-btn" class="btn-link">Baseline vs. proposed</button>
+          </div>
+        </section>
+
+        <section id="comparable-projects-section" class="card comparable-projects-section" aria-labelledby="comparable-projects-title">
+          <div class="card-header">
+            <div class="card-title-group">
+              <h3 id="comparable-projects-title">Find Comparable Projects</h3>
+              <span class="table-subtitle">Filter historical projects to compare end-use EUI. Load the EUI Comparison Workbook above.</span>
+            </div>
+            <span id="comparable-project-count" class="badge badge-subtle">Workbook not loaded</span>
+          </div>
+          <div id="comparable-project-filters" class="comparable-project-filters"></div>
+          <p id="comparable-project-status" class="comparable-project-status" role="status">
+            Load an EUI Comparison Workbook and select a Project Type to view comparable projects.
+          </p>
+          <div id="comparable-project-table-wrap" class="comparable-project-table-wrap hidden">
+            <table id="comparable-project-table" class="comparable-project-table">
+              <thead id="comparable-project-table-head"></thead>
+              <tbody id="comparable-project-table-body"></tbody>
+            </table>
           </div>
         </section>
 
@@ -619,7 +639,7 @@
 
   <script src="qc_module.js?v=1.0"></script>
   <script src="reports_module.js?v=1.0"></script>
-  <script src="app.js?v=2.5"></script>
+  <script src="app.js?v=2.7"></script>
 </body>
 
 </html>
