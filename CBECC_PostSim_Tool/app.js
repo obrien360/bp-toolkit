@@ -647,6 +647,7 @@ const state = {
   historicalEuiProjects: [],
   comparableFilteredProjects: [],
   comparableColumnFilters: {},
+  comparableColumnRanges: {},
   comparableFilterPopupColumn: null,
 
   categoryMapping: {},       // { [rawCat___fuel]: { userCategory, locked, rawCategory, fuel, source } }
@@ -1799,16 +1800,37 @@ function createComparableFilterControls() {
     const checkbox = event.target.closest('[data-comparable-filter-value]');
     if (!checkbox || !state.comparableFilterPopupColumn) return;
     const columnKey = state.comparableFilterPopupColumn;
-    const selected = new Set(state.comparableColumnFilters[columnKey] || []);
+    const allOptionKeys = getComparableFilterOptions(columnKey).map(value =>
+      getComparableFilterValueKey(value, columnKey)
+    );
+    const selected = new Set(
+      state.comparableColumnFilters[columnKey] ||
+      allOptionKeys
+    );
     if (checkbox.checked) selected.add(checkbox.value);
     else selected.delete(checkbox.value);
-    state.comparableColumnFilters[columnKey] = selected;
+    if (allOptionKeys.every(key => selected.has(key)) && selected.size === allOptionKeys.length) {
+      delete state.comparableColumnFilters[columnKey];
+    } else {
+      state.comparableColumnFilters[columnKey] = selected;
+    }
     updateComparableProjectView();
   });
   elements.comparableFilterPopup.addEventListener('input', event => {
     if (event.target.matches('.comparable-filter-search')) {
       filterComparablePopupOptions(event.target.value);
+    } else if (event.target.matches('[data-comparable-range-bound]') &&
+        state.comparableFilterPopupColumn) {
+      const columnKey = state.comparableFilterPopupColumn;
+      state.comparableColumnRanges[columnKey] = {
+        ...state.comparableColumnRanges[columnKey],
+        [event.target.dataset.comparableRangeBound]: event.target.value
+      };
+      updateComparableProjectView();
     }
+  });
+  elements.comparableFilterPopup.addEventListener('pointerdown', event => {
+    event.stopPropagation();
   });
   document.body.append(elements.comparableFilterPopup);
 }
@@ -1829,11 +1851,24 @@ function filterHistoricalProjects(projects, excludedColumnKey = null) {
     for (const column of COMPARABLE_PROJECT_COLUMNS) {
       if (column.key === excludedColumnKey) continue;
       const selected = state.comparableColumnFilters[column.key];
-      if (!selected?.size) continue;
-      if (!selected.has(getComparableFilterValueKey(project[column.key], column.key))) return false;
+      if (selected && !selected.has(getComparableFilterValueKey(project[column.key], column.key))) {
+        return false;
+      }
+      if (!isComparableTextFilterColumn(column.key)) {
+        const range = state.comparableColumnRanges[column.key];
+        const value = project[column.key];
+        if (range?.min !== undefined && range.min !== '' &&
+            (typeof value !== 'number' || value < Number(range.min))) return false;
+        if (range?.max !== undefined && range.max !== '' &&
+            (typeof value !== 'number' || value > Number(range.max))) return false;
+      }
     }
     return true;
   });
+}
+
+function isComparableTextFilterColumn(columnKey) {
+  return columnKey === 'projectCode' || columnKey === 'simulationRun';
 }
 
 function getComparableColumnDecimals(columnKey) {
@@ -1902,12 +1937,32 @@ function openComparableFilterPopup(column, button) {
     return;
   }
   state.comparableFilterPopupColumn = column.key;
-  const selected = state.comparableColumnFilters[column.key] || new Set();
-  const search = document.createElement('input');
-  search.type = 'search';
-  search.className = 'comparable-filter-search';
-  search.placeholder = `Search ${column.label.toLowerCase()}`;
-  search.setAttribute('aria-label', `Search ${column.label} filter options`);
+  const selected = state.comparableColumnFilters[column.key] ||
+    new Set(getComparableFilterOptions(column.key).map(value =>
+      getComparableFilterValueKey(value, column.key)
+    ));
+  const controls = document.createElement('div');
+  if (isComparableTextFilterColumn(column.key)) {
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'comparable-filter-search';
+    search.placeholder = `Search ${column.label.toLowerCase()}`;
+    search.setAttribute('aria-label', `Search ${column.label} filter options`);
+    controls.append(search);
+  } else {
+    controls.className = 'comparable-filter-range';
+    ['min', 'max'].forEach(bound => {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = 'any';
+      input.dataset.comparableRangeBound = bound;
+      input.className = 'comparable-filter-range-input';
+      input.placeholder = bound === 'min' ? 'Min' : 'Max';
+      input.setAttribute('aria-label', `${bound === 'min' ? 'Minimum' : 'Maximum'} ${column.label}`);
+      input.value = state.comparableColumnRanges[column.key]?.[bound] || '';
+      controls.append(input);
+    });
+  }
 
   const actions = document.createElement('div');
   actions.className = 'comparable-filter-actions';
@@ -1916,11 +1971,23 @@ function openComparableFilterPopup(column, button) {
   clearButton.className = 'btn-link';
   clearButton.textContent = 'Clear filter';
   clearButton.addEventListener('click', () => {
-    state.comparableColumnFilters[column.key] = new Set();
+    delete state.comparableColumnFilters[column.key];
+    delete state.comparableColumnRanges[column.key];
     closeComparableFilterPopup();
     updateComparableProjectView();
   });
-  actions.append(clearButton);
+  const deselectButton = document.createElement('button');
+  deselectButton.type = 'button';
+  deselectButton.className = 'btn-link';
+  deselectButton.textContent = 'Deselect all';
+  deselectButton.addEventListener('click', () => {
+    state.comparableColumnFilters[column.key] = new Set();
+    elements.comparableFilterPopup.querySelectorAll('[data-comparable-filter-value]').forEach(checkbox => {
+      checkbox.checked = false;
+    });
+    updateComparableProjectView();
+  });
+  actions.append(clearButton, deselectButton);
 
   const options = document.createElement('div');
   options.className = 'comparable-filter-options';
@@ -1937,9 +2004,9 @@ function openComparableFilterPopup(column, button) {
     label.append(checkbox, document.createTextNode(formatComparableFilterOption(value, column.key)));
     options.append(label);
   });
-  elements.comparableFilterPopup.replaceChildren(search, actions, options);
+  elements.comparableFilterPopup.replaceChildren(controls, actions, options);
   positionComparableFilterPopup(button);
-  search.focus({ preventScroll: true });
+  controls.querySelector('input')?.focus({ preventScroll: true });
 }
 
 function closeComparableFilterPopup() {
@@ -2023,12 +2090,19 @@ function renderComparableProjectTable() {
     filterButton.className = 'comparable-unit-filter';
     filterButton.dataset.comparableColumn = column.key;
     const activeFilter = state.comparableColumnFilters[column.key];
-    const isFiltered = Boolean(activeFilter?.size);
+    const range = state.comparableColumnRanges[column.key];
+    const hasRangeFilter = Boolean(range?.min || range?.max);
+    const isFiltered = Boolean(activeFilter !== undefined || hasRangeFilter);
     filterButton.classList.toggle('is-filtered', isFiltered);
     filterButton.setAttribute('aria-pressed', String(isFiltered));
     filterButton.setAttribute('aria-label', `Filter ${column.label}`);
     filterButton.title = `Filter ${column.label}`;
-    filterButton.textContent = `${isFiltered ? `${activeFilter.size} selected` : (column.unit || 'All')} ▾`;
+    const filterLabel = hasRangeFilter
+      ? 'Range'
+      : activeFilter !== undefined
+        ? `${activeFilter.size} selected`
+        : (column.unit || 'All');
+    filterButton.textContent = `${filterLabel} ▾`;
     unit.append(filterButton);
     unitsRow.append(unit);
   });
@@ -2227,6 +2301,7 @@ async function handleEuiComparisonWorkbookUpload(file) {
     state.loadedEuiComparisonWorkbook = { file, name: file.name };
     state.historicalEuiProjects = projects;
     state.comparableColumnFilters = {};
+    state.comparableColumnRanges = {};
     closeComparableFilterPopup();
     if (elements.slotEuiComp) elements.slotEuiComp.classList.add('active-loaded');
     if (elements.euiCompStatusLabel) elements.euiCompStatusLabel.textContent = file.name;
@@ -2243,6 +2318,7 @@ function clearEuiComparisonWorkbook() {
   state.historicalEuiProjects = [];
   state.comparableFilteredProjects = [];
   state.comparableColumnFilters = {};
+  state.comparableColumnRanges = {};
   closeComparableFilterPopup();
   if (elements.slotEuiComp) elements.slotEuiComp.classList.remove('active-loaded');
   if (elements.euiCompStatusLabel) elements.euiCompStatusLabel.textContent = 'Select comparison workbook';
@@ -3901,7 +3977,9 @@ function setupEventListeners() {
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') closeComparableFilterPopup();
   });
-  document.addEventListener('scroll', closeComparableFilterPopup, true);
+  document.addEventListener('scroll', event => {
+    if (!elements.comparableFilterPopup.contains(event.target)) closeComparableFilterPopup();
+  }, true);
 
   // Theme Toggle
   elements.themeToggleBtn.addEventListener('click', () => {

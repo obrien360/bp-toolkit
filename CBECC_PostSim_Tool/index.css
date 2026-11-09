@@ -3060,6 +3060,7 @@ body:not(.light-theme) .badge-ab1 {
   flex-direction: column;
   width: 270px;
   max-height: min(360px, 75vh);
+  overflow: hidden;
   padding: 10px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -3070,7 +3071,23 @@ body:not(.light-theme) .badge-ab1 {
 
 .comparable-filter-search {
   width: 100%;
-  margin-bottom: 7px;
+  padding: 7px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.comparable-filter-range {
+  display: flex;
+  gap: 8px;
+}
+
+.comparable-filter-range-input {
+  width: 50%;
+  min-width: 0;
   padding: 7px 9px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -3082,7 +3099,10 @@ body:not(.light-theme) .badge-ab1 {
 
 .comparable-filter-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: 7px;
   padding: 0 2px 6px;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -3092,7 +3112,9 @@ body:not(.light-theme) .badge-ab1 {
 }
 
 .comparable-filter-options {
+  flex: 1;
   min-height: 28px;
+  overscroll-behavior: contain;
   overflow: auto;
   padding-top: 4px;
 }
