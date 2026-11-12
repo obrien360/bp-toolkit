@@ -138,6 +138,11 @@
       color: #1f8570;
     }
 
+    .badge-purple {
+      background: #f8eff6;
+      color: #793E6D;
+    }
+
     .tool-icon {
       font-size: 32px;
       margin-bottom: 16px;
@@ -222,6 +227,15 @@
       box-shadow: 0 6px 16px rgba(31, 133, 112, 0.45);
     }
 
+    .btn-purple {
+      background: linear-gradient(135deg, #793E6D, #5c2c52);
+      box-shadow: 0 4px 12px rgba(121, 62, 109, 0.35);
+    }
+
+    .btn-purple:hover {
+      box-shadow: 0 6px 16px rgba(121, 62, 109, 0.45);
+    }
+
     .portal-footer {
       margin-top: 40px;
       font-size: 12px;
@@ -304,6 +318,28 @@
         </div>
         <a href="CBECC_PostSim_Tool/" class="btn-launch btn-blue">
           Launch CBECC Post-Sim Tool &rarr;
+        </a>
+      </div>
+
+      <!-- Tool 4: CBECC XML Viewer -->
+      <div class="tool-card">
+        <span class="tool-badge badge-purple">XML Visualizer</span>
+        <div class="tool-icon">🏢</div>
+        <div>
+          <h2 class="tool-title">CBECC XML Viewer</h2>
+          <p class="tool-desc">Client-side 2D & 3D inspection tool for CBECC XML model files. Renders interactive floor plans, true-projection facade elevations with exterior shading, interactive 3D WebGL orbits, construction schedules, and net areas.</p>
+          <ul class="tool-features">
+            <li>Interactive floor plans & true-projection cardinal elevations</li>
+            <li>Interactive 3D WebGL model orbit with camera presets</li>
+            <li>Color-by Construction, Surface Type, Thermal Zone, or Space</li>
+            <li>Exterior shading objects & space labels display</li>
+            <li>Detailed element properties & construction specification inspector</li>
+            <li>Interactive construction schedule & spaces inventory tables</li>
+            <li>High-resolution SVG & PNG snapshot export for deliverables</li>
+          </ul>
+        </div>
+        <a href="CBECC_XML_Viewer/" class="btn-launch btn-purple">
+          Launch CBECC XML Viewer &rarr;
         </a>
       </div>
 
