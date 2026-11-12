@@ -833,12 +833,83 @@
       }
 
       if (showLabels && storyName !== '__roof') {
-        planItems.spaces.forEach(space => {
+        const placedRects = [];
+        function rectsOverlap(r1, r2) {
+          return !(r1.x + r1.w < r2.x || r2.x + r2.w < r1.x ||
+                   r1.y + r1.h < r2.y || r2.y + r2.h < r1.y);
+        }
+
+        // Prioritize placement by floor area (larger spaces get primary centroid placement)
+        const sortedSpaces = planItems.spaces.slice().sort((a, b) => (b.floorArea || 0) - (a.floorArea || 0));
+
+        sortedSpaces.forEach(space => {
           const [cx, cy] = GeometryEngine.computePolygonInteriorPoint(space.floorPts);
+          const textLen = space.name.length;
+          const labelWidth = textLen * (fontSize * 0.52) + (fontSize * 0.6);
+          const labelHeight = fontSize * 1.25;
+
+          // Test candidate positions: interior centroid, followed by small vertical & horizontal offsets
+          const candidates = [
+            { x: cx, y: -cy },
+            { x: cx, y: -cy - labelHeight * 1.1 },
+            { x: cx, y: -cy + labelHeight * 1.1 },
+            { x: cx - labelWidth * 0.45, y: -cy },
+            { x: cx + labelWidth * 0.45, y: -cy },
+            { x: cx - labelWidth * 0.35, y: -cy - labelHeight * 0.95 },
+            { x: cx + labelWidth * 0.35, y: -cy - labelHeight * 0.95 },
+            { x: cx - labelWidth * 0.35, y: -cy + labelHeight * 0.95 },
+            { x: cx + labelWidth * 0.35, y: -cy + labelHeight * 0.95 }
+          ];
+
+          let bestPos = candidates[0];
+          let foundNonOverlapping = false;
+
+          for (const pos of candidates) {
+            const candidateRect = {
+              x: pos.x - labelWidth / 2 - fontSize * 0.08,
+              y: pos.y - labelHeight / 2 - fontSize * 0.08,
+              w: labelWidth + fontSize * 0.16,
+              h: labelHeight + fontSize * 0.16
+            };
+
+            let conflict = false;
+            for (const r of placedRects) {
+              if (rectsOverlap(candidateRect, r)) {
+                conflict = true;
+                break;
+              }
+            }
+
+            if (!conflict) {
+              bestPos = pos;
+              foundNonOverlapping = true;
+              placedRects.push(candidateRect);
+              break;
+            }
+          }
+
+          let renderFontSize = fontSize * 0.9;
+          if (!foundNonOverlapping) {
+            renderFontSize = fontSize * 0.75;
+            placedRects.push({
+              x: bestPos.x - labelWidth / 2,
+              y: bestPos.y - labelHeight / 2,
+              w: labelWidth,
+              h: labelHeight
+            });
+          }
+
           const textElem = Vector2DRenderer.createSvgElement('text', {
-            x: cx, y: -cy, 'font-size': fontSize * 0.9,
-            'text-anchor': 'middle', 'dominant-baseline': 'middle',
-            fill: '#0F172A', 'font-weight': '600'
+            x: bestPos.x,
+            y: bestPos.y,
+            'font-size': renderFontSize,
+            'text-anchor': 'middle',
+            'dominant-baseline': 'middle',
+            fill: '#0F172A',
+            'font-weight': '600',
+            class: 'space-label',
+            'data-space-id': space.id,
+            'data-sel': space.id
           }, mainGroup);
           textElem.textContent = space.name;
         });
@@ -990,6 +1061,14 @@
       this.animationId = null;
       this.isWireframe = false;
       this.boundingSphere = null;
+      this.model = null;
+      this.showShades = true;
+      this.showLabels = true;
+      this.currentStory = '__all';
+      this.selectedId = null;
+      this.selectedSpaceId = null;
+      this.labelsOverlay = null;
+      this.labelElements = new Map();
       this.init();
     }
 
@@ -1004,6 +1083,11 @@
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
       this.container.innerHTML = '';
       this.container.appendChild(this.renderer.domElement);
+
+      // Create interactive HTML overlay for 3D space labels
+      this.labelsOverlay = document.createElement('div');
+      this.labelsOverlay.className = 'three-labels-overlay';
+      this.container.appendChild(this.labelsOverlay);
 
       this.scene = new THREE.Scene();
       this.scene.background = new THREE.Color(0xF8FAFC);
@@ -1032,7 +1116,7 @@
       this.modelGroup = new THREE.Group();
       this.scene.add(this.modelGroup);
 
-      // Setup click raycasting
+      // Setup click raycasting for 3D meshes
       const raycaster = new THREE.Raycaster();
       const mouse = new THREE.Vector2();
       let dragStart = { x: 0, y: 0 };
@@ -1076,6 +1160,7 @@
         if (this.controls) this.controls.update();
         if (this.renderer && this.scene && this.camera) {
           this.renderer.render(this.scene, this.camera);
+          this.update3DLabels();
         }
       };
       renderLoop();
@@ -1089,6 +1174,7 @@
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(w, h);
+        this.update3DLabels();
       }
     }
 
@@ -1130,6 +1216,7 @@
         obj,
         kind: obj.kind,
         type: obj.type,
+        story: obj.story || '',
         isOpening: isOpening || isGlass,
         isShade,
         baseColor: hexColor,
@@ -1166,6 +1253,8 @@
 
     loadModel(model, mode, colorMaps, showShades = true) {
       if (!this.scene) return;
+      this.model = model;
+      this.showShades = showShades;
 
       while (this.modelGroup.children.length > 0) {
         const child = this.modelGroup.children[0];
@@ -1217,6 +1306,204 @@
 
         this.setCameraPreset('iso');
       }
+
+      this.build3DLabels();
+      this.setStory(this.currentStory);
+    }
+
+    build3DLabels() {
+      this.labelElements = new Map();
+      if (!this.labelsOverlay) return;
+      this.labelsOverlay.innerHTML = '';
+      if (!this.model || !this.model.spaces) return;
+
+      this.model.spaces.forEach(space => {
+        if (!space.floorPts || space.floorPts.length < 3) return;
+        const [cx, cy] = GeometryEngine.computePolygonInteriorPoint(space.floorPts);
+        const floorZ = space.floorPts[0][2];
+        const pos3D = new THREE.Vector3(cx, cy, floorZ + 3.5);
+
+        const el = document.createElement('div');
+        el.className = 'three-space-label';
+        el.textContent = space.name;
+        el.dataset.spaceId = space.id;
+        el.title = `${space.name} (${space.story || 'Space'})\nClick to inspect specs`;
+        el.addEventListener('click', e => {
+          e.stopPropagation();
+          this.onSelect(space.id);
+        });
+
+        this.labelsOverlay.appendChild(el);
+        this.labelElements.set(space.id, {
+          el,
+          space,
+          pos3D,
+          story: space.story,
+          area: space.floorArea || 0
+        });
+      });
+    }
+
+    setStory(storyName) {
+      this.currentStory = storyName || '__all';
+      if (!this.modelGroup) return;
+
+      this.modelGroup.traverse(child => {
+        if (child.isMesh && child.userData && child.userData.obj) {
+          const objStory = child.userData.obj.story;
+          if (this.currentStory === '__all') {
+            child.visible = child.userData.isShade ? this.showShades : true;
+          } else {
+            const match = objStory === this.currentStory;
+            child.visible = match && (child.userData.isShade ? this.showShades : true);
+          }
+        }
+      });
+
+      // Recenter OrbitControls target on the isolated story bounds
+      if (this.currentStory !== '__all') {
+        const visibleBox = new THREE.Box3();
+        this.modelGroup.traverse(child => {
+          if (child.isMesh && child.visible) visibleBox.expandByObject(child);
+        });
+        if (!visibleBox.isEmpty() && this.controls) {
+          const center = visibleBox.getCenter(new THREE.Vector3());
+          this.controls.target.copy(center);
+        }
+      } else if (this.boundingSphere && this.controls) {
+        this.controls.target.copy(this.boundingSphere.center);
+      }
+
+      this.update3DLabels();
+    }
+
+    setLabelsVisible(visible) {
+      this.showLabels = visible;
+      if (this.labelsOverlay) {
+        this.labelsOverlay.style.display = visible ? 'block' : 'none';
+      }
+      if (visible) {
+        this.update3DLabels();
+      }
+    }
+
+    update3DLabels() {
+      if (!this.labelsOverlay) return;
+      if (!this.showLabels) {
+        this.labelsOverlay.style.display = 'none';
+        return;
+      }
+      this.labelsOverlay.style.display = 'block';
+
+      const w = this.container.clientWidth;
+      const h = this.container.clientHeight;
+      if (w <= 0 || h <= 0 || !this.camera) return;
+
+      // Filter candidates for the currently isolated story (or all stories if '__all')
+      const candidates = [];
+      this.labelElements.forEach(item => {
+        if (this.currentStory !== '__all' && item.story !== this.currentStory) {
+          item.el.style.display = 'none';
+          return;
+        }
+
+        const tempV = item.pos3D.clone();
+        tempV.project(this.camera);
+
+        // Behind camera or out of frustum viewport
+        if (tempV.z > 1.0 || tempV.x < -1.1 || tempV.x > 1.1 || tempV.y < -1.1 || tempV.y > 1.1) {
+          item.el.style.display = 'none';
+          return;
+        }
+
+        const sx = (tempV.x * 0.5 + 0.5) * w;
+        const sy = (-tempV.y * 0.5 + 0.5) * h;
+        const dist = this.camera.position.distanceTo(item.pos3D);
+
+        candidates.push({
+          item,
+          sx,
+          sy,
+          dist,
+          isSelected: Boolean(this.selectedSpaceId && item.space.id === this.selectedSpaceId)
+        });
+      });
+
+      // Priority sort: selected space first, then closer distance to camera, then larger floor area
+      candidates.sort((a, b) => {
+        if (a.isSelected) return -1;
+        if (b.isSelected) return 1;
+        if (Math.abs(a.dist - b.dist) > 5) return a.dist - b.dist;
+        return b.item.area - a.item.area;
+      });
+
+      const placedRects = [];
+      function collides(r1, r2) {
+        return !(r1.x + r1.w < r2.x || r2.x + r2.w < r1.x ||
+                 r1.y + r1.h < r2.y || r2.y + r2.h < r1.y);
+      }
+
+      candidates.forEach(cand => {
+        const el = cand.item.el;
+        const isSelected = cand.isSelected;
+
+        // Apply selection / fading classes
+        if (this.selectedSpaceId) {
+          el.classList.toggle('label-sel', isSelected);
+          el.classList.toggle('label-dim', !isSelected);
+        } else {
+          el.classList.remove('label-sel');
+          el.classList.remove('label-dim');
+        }
+
+        const lw = el.offsetWidth || (cand.item.space.name.length * 7.5 + 18);
+        const lh = el.offsetHeight || 22;
+
+        let bestX = cand.sx;
+        let bestY = cand.sy;
+        let canPlace = isSelected; // Selected space label is always displayed
+
+        if (!canPlace) {
+          const testPositions = [
+            { x: cand.sx, y: cand.sy },
+            { x: cand.sx, y: cand.sy - lh - 4 },
+            { x: cand.sx, y: cand.sy + lh + 4 },
+            { x: cand.sx - lw * 0.55, y: cand.sy },
+            { x: cand.sx + lw * 0.55, y: cand.sy }
+          ];
+
+          for (let pos of testPositions) {
+            const testRect = { x: pos.x - lw / 2 - 3, y: pos.y - lh / 2 - 2, w: lw + 6, h: lh + 4 };
+            let hasConflict = false;
+            for (let r of placedRects) {
+              if (collides(testRect, r)) {
+                hasConflict = true;
+                break;
+              }
+            }
+            if (!hasConflict) {
+              bestX = pos.x;
+              bestY = pos.y;
+              canPlace = true;
+              break;
+            }
+          }
+        }
+
+        if (canPlace) {
+          el.style.display = 'block';
+          el.style.left = `${bestX}px`;
+          el.style.top = `${bestY}px`;
+          placedRects.push({
+            x: bestX - lw / 2 - 3,
+            y: bestY - lh / 2 - 2,
+            w: lw + 6,
+            h: lh + 4
+          });
+        } else {
+          el.style.display = 'none';
+        }
+      });
     }
 
     setCameraPreset(preset) {
@@ -1236,6 +1523,25 @@
         // Isometric framing
         this.camera.position.set(center.x + maxDim * 1.3, center.y - maxDim * 1.5, center.z + maxDim * 1.1);
       }
+      this.camera.lookAt(center);
+      this.controls.update();
+    }
+
+    fitView() {
+      if (!this.camera || !this.controls || !this.modelGroup) return;
+      const visibleBox = new THREE.Box3();
+      this.modelGroup.traverse(child => {
+        if (child.isMesh && child.visible) visibleBox.expandByObject(child);
+      });
+      if (visibleBox.isEmpty()) {
+        this.setCameraPreset('iso');
+        return;
+      }
+      const center = visibleBox.getCenter(new THREE.Vector3());
+      const size = visibleBox.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z, 20);
+      this.controls.target.copy(center);
+      this.camera.position.set(center.x + maxDim * 1.3, center.y - maxDim * 1.5, center.z + maxDim * 1.1);
       this.camera.lookAt(center);
       this.controls.update();
     }
@@ -1285,22 +1591,47 @@
       });
     }
 
-    applySelection(selectedId) {
-      if (!this.modelGroup) return;
-      this.modelGroup.traverse(child => {
-        if (child.isMesh && child.userData) {
-          const isSelected = selectedId && (child.userData.id === selectedId || (child.userData.obj && child.userData.obj.spaceId === selectedId));
-          if (isSelected) {
-            child.material.emissive.setHex(0xD6336C);
-            child.material.emissiveIntensity = 0.45;
-            child.material.opacity = 1.0;
-          } else {
-            const hex = child.userData.baseColor;
-            child.material.emissive.setHex(child.userData.isOpening ? hex : 0x000000);
-            child.material.emissiveIntensity = child.userData.isOpening ? 0.25 : 0.0;
+    applySelection(selectedId, selectedSpaceId) {
+      this.selectedId = selectedId;
+      this.selectedSpaceId = selectedSpaceId;
+
+      if (this.modelGroup) {
+        this.modelGroup.traverse(child => {
+          if (child.isMesh && child.userData) {
+            const isSelected = selectedId && (
+              child.userData.id === selectedId ||
+              (child.userData.obj && child.userData.obj.spaceId === selectedId)
+            );
+            const belongsToSelectedSpace = selectedSpaceId && child.userData.obj && child.userData.obj.spaceId === selectedSpaceId;
+
+            if (isSelected || belongsToSelectedSpace) {
+              child.material.emissive.setHex(0xD6336C);
+              child.material.emissiveIntensity = 0.45;
+              child.material.opacity = 1.0;
+              child.material.transparent = child.userData.baseTransparent;
+              child.material.depthWrite = child.userData.baseDepthWrite;
+            } else if (selectedSpaceId) {
+              // Space is selected: fade non-selected space shades / surfaces
+              const hex = child.userData.baseColor;
+              child.material.emissive.setHex(child.userData.isOpening ? hex : 0x000000);
+              child.material.emissiveIntensity = child.userData.isOpening ? 0.15 : 0.0;
+              child.material.opacity = 0.12;
+              child.material.transparent = true;
+              child.material.depthWrite = false;
+            } else {
+              // Normal unselected state
+              const hex = child.userData.baseColor;
+              child.material.emissive.setHex(child.userData.isOpening ? hex : 0x000000);
+              child.material.emissiveIntensity = child.userData.isOpening ? 0.25 : 0.0;
+              child.material.opacity = child.userData.baseOpacity;
+              child.material.transparent = child.userData.baseTransparent;
+              child.material.depthWrite = child.userData.baseDepthWrite;
+            }
           }
-        }
-      });
+        });
+      }
+
+      this.update3DLabels();
     }
   }
 
@@ -1315,6 +1646,7 @@
         maps: null,
         view: 'plan',          // 'plan' | 'elev' | '3d'
         story: null,           // story name or '__roof'
+        story3d: '__all',      // '__all' | story name (3D story isolation)
         elevAz: null,          // azimuth: 0, 90, 180, 270
         mode: 'construction',  // 'construction' | 'type' | 'zone' | 'space'
         isolate: null,
@@ -1393,6 +1725,8 @@
         const target = e.target.closest('[data-sel]');
         if (target) {
           this.showElementInfo(target.getAttribute('data-sel'));
+        } else {
+          this.showElementInfo(null);
         }
       });
 
@@ -1437,13 +1771,16 @@
 
       document.getElementById('label-toggle').addEventListener('change', e => {
         this.state.showLabels = e.target.checked;
+        if (this.threeViewer) {
+          this.threeViewer.setLabelsVisible(this.state.showLabels);
+        }
         this.render();
       });
 
       // Fit / Zoom Buttons
       document.getElementById('fit-btn').addEventListener('click', () => {
         if (this.state.view === '3d' && this.threeViewer) {
-          this.threeViewer.setCameraPreset('iso');
+          this.threeViewer.fitView();
           return;
         }
         const key = this.getViewKey();
@@ -1688,6 +2025,11 @@
     }
 
     render() {
+      const m = this.state.model;
+      const selObj = m && this.state.selectedId ? m.byId[this.state.selectedId] : null;
+      const isSpaceSelected = Boolean(selObj && selObj.kind === 'space');
+      const selectedSpaceId = isSpaceSelected ? selObj.id : null;
+
       if (this.state.view === '3d') {
         this.svgElement.style.display = 'none';
         this.threeContainer.style.display = 'block';
@@ -1697,15 +2039,17 @@
           this.threeViewer.loadModel(this.state.model, this.state.mode, this.state.maps, this.state.showShades);
         } else {
           this.threeViewer.updateColors(this.state.mode, this.state.maps);
+          this.threeViewer.setStory(this.state.story3d || '__all');
+          this.threeViewer.setLabelsVisible(this.state.showLabels);
           this.threeViewer.applyIsolation(this.state.isolate, this.state.mode);
-          this.threeViewer.applySelection(this.state.selectedId);
+          this.threeViewer.applySelection(this.state.selectedId, selectedSpaceId);
           this.threeViewer.handleResize();
         }
 
-        const m = this.state.model;
         if (m) {
+          const storyText = (this.state.story3d || '__all') === '__all' ? 'Whole Building' : this.state.story3d;
           document.getElementById('caption-left').textContent =
-            `3D Perspective View · ${m.stories.length} stories, ${m.spaces.length} spaces, ${m.surfaces.length} envelope surfaces, ${m.openings.length} fenestrations`;
+            `3D Perspective View · ${storyText} · ${m.stories.length} stories, ${m.spaces.length} spaces, ${m.surfaces.length} envelope surfaces, ${m.openings.length} fenestrations`;
         }
       } else {
         this.svgElement.style.display = 'block';
@@ -1785,18 +2129,20 @@
           });
         });
       } else if (this.state.view === '3d') {
-        labelEl.textContent = 'CAMERA';
-        addBtn('Isometric', false, () => this.threeViewer && this.threeViewer.setCameraPreset('iso'));
-        addBtn('Top View', false, () => this.threeViewer && this.threeViewer.setCameraPreset('top'));
-        addBtn('South (Front)', false, () => this.threeViewer && this.threeViewer.setCameraPreset('south'));
-        addBtn('East (Side)', false, () => this.threeViewer && this.threeViewer.setCameraPreset('east'));
-        const isWire = this.threeViewer ? this.threeViewer.isWireframe : false;
-        addBtn(isWire ? 'Shaded View' : 'Wireframe', isWire, () => {
-          if (this.threeViewer) {
-            this.threeViewer.toggleWireframe();
-            this.renderSubtabs();
-          }
+        labelEl.textContent = 'STORY';
+        const currentStory3d = this.state.story3d || '__all';
+        addBtn('Whole Building', currentStory3d === '__all', () => {
+          this.state.story3d = '__all';
+          if (this.threeViewer) this.threeViewer.setStory('__all');
+          this.renderSubtabs();
+          this.render();
         });
+        m.stories.forEach(st => addBtn(st.name, currentStory3d === st.name, () => {
+          this.state.story3d = st.name;
+          if (this.threeViewer) this.threeViewer.setStory(st.name);
+          this.renderSubtabs();
+          this.render();
+        }));
       }
 
       document.querySelectorAll('[data-view]').forEach(b => {
@@ -1862,15 +2208,49 @@
     }
 
     applySelection() {
+      const m = this.state.model;
+      const selObj = m && this.state.selectedId ? m.byId[this.state.selectedId] : null;
+      const isSpaceSelected = Boolean(selObj && selObj.kind === 'space');
+      const selectedSpaceId = isSpaceSelected ? selObj.id : null;
+
       if (this.state.view === '3d' && this.threeViewer) {
-        this.threeViewer.applySelection(this.state.selectedId);
+        this.threeViewer.applySelection(this.state.selectedId, selectedSpaceId);
       } else {
         this.svgElement.querySelectorAll('.sel').forEach(e => e.classList.remove('sel'));
-        if (!this.state.selectedId) return;
-        this.svgElement.querySelectorAll(`[data-sel="${this.state.selectedId}"]`).forEach(elem => {
-          elem.classList.add('sel');
-          elem.parentNode.appendChild(elem);
-        });
+        this.svgElement.querySelectorAll('.label-sel').forEach(e => e.classList.remove('label-sel'));
+        this.svgElement.querySelectorAll('.label-dim').forEach(e => e.classList.remove('label-dim'));
+        this.svgElement.querySelectorAll('.space-dim').forEach(e => e.classList.remove('space-dim'));
+
+        if (this.state.selectedId) {
+          this.svgElement.querySelectorAll(`[data-sel="${this.state.selectedId}"]`).forEach(elem => {
+            elem.classList.add('sel');
+            if (elem.parentNode) elem.parentNode.appendChild(elem);
+          });
+        }
+
+        if (selectedSpaceId) {
+          // Fade non-selected space labels
+          this.svgElement.querySelectorAll('text.space-label').forEach(lbl => {
+            const spaceId = lbl.getAttribute('data-space-id');
+            if (spaceId === selectedSpaceId) {
+              lbl.classList.add('label-sel');
+              if (lbl.parentNode) lbl.parentNode.appendChild(lbl);
+            } else {
+              lbl.classList.add('label-dim');
+            }
+          });
+
+          // Fade non-selected space floor polygons (space shades)
+          this.svgElement.querySelectorAll('polygon[data-sel]').forEach(poly => {
+            const sel = poly.getAttribute('data-sel');
+            const obj = m ? m.byId[sel] : null;
+            if (obj && obj.kind === 'space') {
+              if (obj.id !== selectedSpaceId) {
+                poly.classList.add('space-dim');
+              }
+            }
+          });
+        }
       }
     }
 
@@ -2036,9 +2416,7 @@
         ['Project Name', p.name],
         ['Building', p.bldgName],
         ['Building Azimuth', `${Math.round(p.bldgAz)}°`],
-        ['Climate Zone', p.climateZone],
-        ['Stories', String(m.stories.length)],
-        ['Input Geometry', p.geometryInpType]
+        ['Stories', String(m.stories.length)]
       ];
 
       document.getElementById('meta-row').innerHTML = meta.filter(x => x[1]).map(([k, v]) => `
