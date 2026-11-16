@@ -631,12 +631,24 @@
           key: zone, label: zone, color: colorMaps.zone[zone], area: accumulator[zone], areaLabel: 'floor', drawn: true
         }));
       } else if (mode === 'space') {
+        const assignedSpaces = new Set();
         model.stories.forEach(story => {
+          if (!story.spaces || !story.spaces.length) return;
           entries.push({ header: story.name });
-          story.spaces.forEach(s => entries.push({
+          story.spaces.forEach(s => {
+            assignedSpaces.add(s.name);
+            entries.push({
+              key: s.name, label: s.name, color: colorMaps.space[s.name], area: s.floorArea, areaLabel: 'floor', drawn: true
+            });
+          });
+        });
+        const unassigned = model.spaces.filter(s => !assignedSpaces.has(s.name));
+        if (unassigned.length) {
+          entries.push({ header: 'Other Spaces' });
+          unassigned.forEach(s => entries.push({
             key: s.name, label: s.name, color: colorMaps.space[s.name], area: s.floorArea, areaLabel: 'floor', drawn: true
           }));
-        });
+        }
       }
       if (model.shades.length) {
         entries.push({ header: 'Exterior Shading' });
@@ -1863,6 +1875,7 @@
       this.svgElement = document.getElementById('view-svg');
       this.threeContainer = document.getElementById('three-container');
       this.threeViewer = null;
+      this.collapsedLegendGroups = new Set();
 
       this.initEvents();
     }
@@ -2023,6 +2036,11 @@
         this.applyIsolation();
         this.showElementInfo(null);
       });
+
+      const toggleAllBtn = document.getElementById('legend-toggle-all');
+      if (toggleAllBtn) {
+        toggleAllBtn.addEventListener('click', () => this.toggleAllLegendGroups());
+      }
 
       // Data Tables Navigation
       document.querySelectorAll('.table-tab-btn').forEach(btn => {
@@ -2188,6 +2206,7 @@
 
       document.getElementById('parse-error').style.display = 'none';
       const maps = ColorSchemeManager.buildMaps(model);
+      if (this.collapsedLegendGroups) this.collapsedLegendGroups.clear();
 
       Object.assign(this.state, {
         model,
@@ -2385,32 +2404,203 @@
       document.getElementById('legend-title').textContent = titles[this.state.mode] || 'Legend';
       box.innerHTML = '';
 
+      if (!this.state.model) {
+        this.updateLegendToggleAllBtn();
+        return;
+      }
+
       const entries = ColorSchemeManager.buildLegendEntries(this.state.model, this.state.mode, this.state.maps);
+
+      // Structure entries into groups by header
+      const groups = [];
+      let currentGroup = null;
+
       entries.forEach(e => {
         if (e.header) {
-          const h = document.createElement('div');
-          h.className = 'toolbar-label';
-          h.style.cssText = 'padding:6px 4px 2px;font-size:10px;color:var(--ob-slate-muted);';
-          h.textContent = e.header;
-          box.appendChild(h);
-          return;
-        }
-
-        const row = document.createElement('div');
-        row.className = 'legend-item';
-        row.dataset.key = e.key;
-        row.title = e.drawn ? '' : 'Interior / below-grade horizontal surfaces are not drawn in 2D projection';
-        row.innerHTML = `<span class="legend-sw" style="background:${e.color}"></span><span class="legend-label">${XmlUtils.escapeString(e.label)}${e.drawn ? '' : ' <span style="font-size:10px;color:#94a3b8;">(not drawn)</span>'}</span><span class="legend-meta">${XmlUtils.formatArea(e.area)}${e.areaLabel ? ' ' + e.areaLabel : ''}</span>`;
-
-        row.addEventListener('click', () => {
-          this.state.isolate = this.state.isolate === e.key ? null : e.key;
-          if (this.state.isolate && this.state.mode === 'construction' && this.state.model.constructions[e.key]) {
-            this.showConstructionInfo(e.key);
+          currentGroup = {
+            header: e.header,
+            items: []
+          };
+          groups.push(currentGroup);
+        } else {
+          if (!currentGroup) {
+            currentGroup = {
+              header: null,
+              items: []
+            };
+            groups.push(currentGroup);
           }
-          this.applyIsolation();
-        });
-        box.appendChild(row);
+          currentGroup.items.push(e);
+        }
       });
+
+      const hasHeaders = groups.some(g => g.header !== null);
+
+      if (!hasHeaders) {
+        // Flat list without groups (e.g. Surface Types when no shades exist)
+        groups.forEach(g => {
+          g.items.forEach(e => {
+            box.appendChild(this.createLegendItemRow(e));
+          });
+        });
+      } else {
+        // Render collapsible groups
+        groups.forEach(group => {
+          if (!group.items.length) return;
+
+          if (!group.header) {
+            // Ungrouped items before first header
+            const ungroupedDiv = document.createElement('div');
+            ungroupedDiv.className = 'legend-ungrouped';
+            ungroupedDiv.style.cssText = 'display:flex;flex-direction:column;gap:3px;margin-bottom:4px;';
+            group.items.forEach(e => {
+              ungroupedDiv.appendChild(this.createLegendItemRow(e));
+            });
+            box.appendChild(ungroupedDiv);
+            return;
+          }
+
+          const groupId = `${this.state.mode}:${group.header}`;
+          const isCollapsed = this.collapsedLegendGroups ? this.collapsedLegendGroups.has(groupId) : false;
+
+          const groupEl = document.createElement('div');
+          groupEl.className = 'legend-group' + (isCollapsed ? ' collapsed' : '');
+          groupEl.dataset.groupId = groupId;
+
+          const headerEl = document.createElement('div');
+          headerEl.className = 'legend-group-header';
+          headerEl.setAttribute('role', 'button');
+          headerEl.setAttribute('tabindex', '0');
+          headerEl.setAttribute('aria-expanded', String(!isCollapsed));
+          headerEl.title = 'Click to expand / collapse';
+
+          headerEl.innerHTML = `
+            <div class="legend-group-title-wrap">
+              <svg class="legend-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+              <span class="legend-group-title">${XmlUtils.escapeString(group.header)}</span>
+            </div>
+            <span class="legend-group-count">${group.items.length}</span>
+          `;
+
+          const toggleGroup = () => {
+            const nowCollapsed = groupEl.classList.toggle('collapsed');
+            headerEl.setAttribute('aria-expanded', String(!nowCollapsed));
+            if (!this.collapsedLegendGroups) this.collapsedLegendGroups = new Set();
+            if (nowCollapsed) {
+              this.collapsedLegendGroups.add(groupId);
+            } else {
+              this.collapsedLegendGroups.delete(groupId);
+            }
+            this.updateLegendToggleAllBtn();
+            this.updateLegendGroupActiveState();
+          };
+
+          headerEl.addEventListener('click', toggleGroup);
+          headerEl.addEventListener('keydown', evt => {
+            if (evt.key === 'Enter' || evt.key === ' ') {
+              evt.preventDefault();
+              toggleGroup();
+            }
+          });
+
+          const itemsContainer = document.createElement('div');
+          itemsContainer.className = 'legend-group-items';
+
+          group.items.forEach(e => {
+            itemsContainer.appendChild(this.createLegendItemRow(e));
+          });
+
+          groupEl.appendChild(headerEl);
+          groupEl.appendChild(itemsContainer);
+          box.appendChild(groupEl);
+        });
+      }
+
+      this.updateLegendToggleAllBtn();
+      this.updateLegendGroupActiveState();
+    }
+
+    createLegendItemRow(e) {
+      const row = document.createElement('div');
+      row.className = 'legend-item';
+      row.dataset.key = e.key;
+      row.title = e.drawn ? '' : 'Interior / below-grade horizontal surfaces are not drawn in 2D projection';
+      row.innerHTML = `<span class="legend-sw" style="background:${e.color}"></span><span class="legend-label">${XmlUtils.escapeString(e.label)}${e.drawn ? '' : ' <span style="font-size:10px;color:#94a3b8;">(not drawn)</span>'}</span><span class="legend-meta">${XmlUtils.formatArea(e.area)}${e.areaLabel ? ' ' + e.areaLabel : ''}</span>`;
+
+      row.addEventListener('click', () => {
+        this.state.isolate = this.state.isolate === e.key ? null : e.key;
+        if (this.state.isolate && this.state.mode === 'construction' && this.state.model.constructions[e.key]) {
+          this.showConstructionInfo(e.key);
+        } else if (this.state.isolate && this.state.mode === 'space') {
+          const sp = this.state.model.spaces.find(s => s.name === e.key);
+          if (sp) this.showElementInfo(sp.id);
+        } else if (!this.state.isolate) {
+          if (this.state.selectedId) {
+            this.showElementInfo(null);
+          }
+        }
+        this.applyIsolation();
+      });
+      return row;
+    }
+
+    toggleAllLegendGroups() {
+      const groups = document.querySelectorAll('#legend .legend-group');
+      if (!groups.length) return;
+
+      const anyExpanded = Array.from(groups).some(g => !g.classList.contains('collapsed'));
+      const shouldCollapse = anyExpanded;
+
+      if (!this.collapsedLegendGroups) this.collapsedLegendGroups = new Set();
+
+      groups.forEach(group => {
+        const gid = group.dataset.groupId;
+        const header = group.querySelector('.legend-group-header');
+        if (shouldCollapse) {
+          group.classList.add('collapsed');
+          if (header) header.setAttribute('aria-expanded', 'false');
+          if (gid) this.collapsedLegendGroups.add(gid);
+        } else {
+          group.classList.remove('collapsed');
+          if (header) header.setAttribute('aria-expanded', 'true');
+          if (gid) this.collapsedLegendGroups.delete(gid);
+        }
+      });
+
+      this.updateLegendToggleAllBtn();
+      this.updateLegendGroupActiveState();
+    }
+
+    updateLegendToggleAllBtn() {
+      const btn = document.getElementById('legend-toggle-all');
+      if (!btn) return;
+      const groups = document.querySelectorAll('#legend .legend-group');
+      if (groups.length <= 1) {
+        btn.style.display = 'none';
+        return;
+      }
+      btn.style.display = 'inline-flex';
+      const anyExpanded = Array.from(groups).some(g => !g.classList.contains('collapsed'));
+      btn.textContent = anyExpanded ? 'Collapse All' : 'Expand All';
+      btn.title = anyExpanded ? 'Collapse all categories' : 'Expand all categories';
+    }
+
+    updateLegendGroupActiveState() {
+      document.querySelectorAll('#legend .legend-group').forEach(group => {
+        const activeItem = group.querySelector('.legend-item.active');
+        const hasActive = Boolean(activeItem);
+        group.classList.toggle('has-active', hasActive);
+        if (hasActive && group.classList.contains('collapsed')) {
+          group.classList.remove('collapsed');
+          const header = group.querySelector('.legend-group-header');
+          if (header) header.setAttribute('aria-expanded', 'true');
+          const gid = group.dataset.groupId;
+          if (gid && this.collapsedLegendGroups) this.collapsedLegendGroups.delete(gid);
+        }
+      });
+      this.updateLegendToggleAllBtn();
     }
 
     applyIsolation() {
@@ -2431,6 +2621,8 @@
       document.querySelectorAll('#cons-table tbody tr').forEach(tr => {
         tr.classList.toggle('active', this.state.mode === 'construction' && tr.dataset.key === this.state.isolate);
       });
+
+      this.updateLegendGroupActiveState();
     }
 
     applySelection() {
