@@ -749,7 +749,8 @@
       const bounds = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
       const extent = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY, 10);
       const padding = extent * 0.06;
-      const fontSize = extent / 75;
+      const baseFontSize = extent / 75;
+      const fontSize = baseFontSize * (options.labelFontScale || 1.0);
 
       const mainGroup = Vector2DRenderer.createSvgElement('g', {}, svgRoot);
       const toSvgPoint = pt => [pt[0], -pt[1]];
@@ -836,7 +837,7 @@
         const placedRects = [];
         function rectsOverlap(r1, r2) {
           return !(r1.x + r1.w < r2.x || r2.x + r2.w < r1.x ||
-                   r1.y + r1.h < r2.y || r2.y + r2.h < r1.y);
+            r1.y + r1.h < r2.y || r2.y + r2.h < r1.y);
         }
 
         // Prioritize placement by floor area (larger spaces get primary centroid placement)
@@ -915,8 +916,8 @@
         });
       }
 
-      Vector2DRenderer.drawScaleBar(mainGroup, bounds.minX, bounds.maxY + padding * 0.8, extent, fontSize);
-      Vector2DRenderer.drawNorthArrow(mainGroup, bounds.maxX, bounds.minY - padding * 0.4, extent * 0.05, fontSize, model.project.bldgAz);
+      Vector2DRenderer.drawScaleBar(mainGroup, bounds.minX, bounds.maxY + padding * 0.8, extent, baseFontSize);
+      Vector2DRenderer.drawNorthArrow(mainGroup, bounds.maxX, bounds.minY - padding * 0.4, extent * 0.05, baseFontSize, model.project.bldgAz);
 
       const storyObj = model.stories.find(s => s.name === storyName);
       const elevationStr = storyObj ? ` · elev ${XmlUtils.formatDecimal(storyObj.z, 1)}′` : '';
@@ -931,7 +932,7 @@
     }
 
     static renderElevationView(model, modelAzimuth, options, svgRoot) {
-      const { mode, maps, showShades } = options;
+      const { mode, maps, showShades, showLabels, labelFontScale } = options;
       const angleRad = modelAzimuth * (Math.PI / 180);
       const viewerDir = [Math.sin(angleRad), Math.cos(angleRad), 0];
       const viewerRight = [-Math.cos(angleRad), Math.sin(angleRad), 0];
@@ -975,7 +976,8 @@
 
       const extent = Math.max(maxX - minX, maxZ - minZ, 10);
       const padding = extent * 0.06;
-      const fontSize = extent / 75;
+      const baseFontSize = extent / 75;
+      const labelFontSize = baseFontSize * (labelFontScale || 1.0);
       const mainGroup = Vector2DRenderer.createSvgElement('g', {}, svgRoot);
       const toSvgElevation = pt => [pt[0], -pt[1]];
 
@@ -993,8 +995,8 @@
         }, mainGroup);
 
         const textElem = Vector2DRenderer.createSvgElement('text', {
-          x: minX - padding * 0.55, y: -story.z - fontSize * 0.4,
-          'font-size': fontSize * 0.9, 'text-anchor': 'end', fill: '#64748B'
+          x: minX - padding * 0.55, y: -story.z - baseFontSize * 0.4,
+          'font-size': baseFontSize * 0.9, 'text-anchor': 'end', fill: '#64748B'
         }, mainGroup);
         textElem.textContent = `${story.name} ${XmlUtils.formatDecimal(story.z, 1)}′`;
       });
@@ -1031,11 +1033,194 @@
         stroke: '#0F172A', 'stroke-width': 2.2, 'vector-effect': 'non-scaling-stroke'
       }, mainGroup);
 
-      Vector2DRenderer.drawScaleBar(mainGroup, minX, -groundZ + padding * 0.8, extent, fontSize);
+      // Space Labels in Elevation View - ONLY for spaces visible on this exterior facade
+      if (showLabels) {
+        const placedRects = [];
+        function rectsOverlap(r1, r2) {
+          return !(r1.x + r1.w < r2.x || r2.x + r2.w < r1.x ||
+                   r1.y + r1.h < r2.y || r2.y + r2.h < r1.y);
+        }
+
+        // Find spaces with exterior surfaces facing this elevation direction
+        const spaceCandidates = [];
+        model.spaces.forEach(space => {
+          const facingSurfaces = model.surfaces.filter(s =>
+            (s.spaceId === space.id || s.space === space.name) &&
+            s.exterior &&
+            GeometryEngine.dotProduct(s.normal, viewerDir) > FACING_THRESHOLD
+          );
+
+          if (!facingSurfaces.length) return; // Exclude spaces that are not visible on this facade
+
+          // Pick the primary (largest area) facing exterior wall for label placement
+          const primarySurface = facingSurfaces.reduce((maxS, s) =>
+            ((s.grossArea || s.netArea || 0) > (maxS.grossArea || maxS.netArea || 0)) ? s : maxS
+          , facingSurfaces[0]);
+
+          let minWallX = Infinity, maxWallX = -Infinity;
+          let minWallZ = Infinity, maxWallZ = -Infinity;
+          let sumDepth = 0;
+          let ptCount = 0;
+
+          primarySurface.pts.forEach(pt => {
+            const px = GeometryEngine.dotProduct(pt, viewerRight);
+            minWallX = Math.min(minWallX, px);
+            maxWallX = Math.max(maxWallX, px);
+            minWallZ = Math.min(minWallZ, pt[2]);
+            maxWallZ = Math.max(maxWallZ, pt[2]);
+            sumDepth += GeometryEngine.dotProduct(pt, viewerDir);
+            ptCount++;
+          });
+
+          const projX = (minWallX + maxWallX) / 2;
+          const projY = -((minWallZ + maxWallZ) / 2);
+          const depth = ptCount > 0 ? (sumDepth / ptCount) : 0;
+          const facadeArea = facingSurfaces.reduce((acc, s) => acc + (s.grossArea || s.netArea || 0), 0);
+          const wallWidth = maxWallX - minWallX;
+          const wallHeight = maxWallZ - minWallZ;
+
+          spaceCandidates.push({
+            space,
+            projX,
+            projY,
+            depth,
+            area: facadeArea,
+            wallWidth,
+            wallHeight
+          });
+        });
+
+        // Priority sort:
+        // 1. User-selected space first (guaranteed placement at optimal center)
+        // 2. Closer to facade front (larger depth)
+        // 3. Larger facade area
+        spaceCandidates.sort((a, b) => {
+          if (options.selectedId && a.space.id === options.selectedId) return -1;
+          if (options.selectedId && b.space.id === options.selectedId) return 1;
+          if (Math.abs(b.depth - a.depth) > 2) return b.depth - a.depth;
+          return b.area - a.area;
+        });
+
+        spaceCandidates.forEach(cand => {
+          const space = cand.space;
+          const isSelected = (options.selectedId === space.id);
+          const textLen = space.name.length;
+          let currentFontSize = labelFontSize * 0.9;
+          let labelWidth = textLen * (currentFontSize * 0.52) + (currentFontSize * 0.6);
+          let labelHeight = currentFontSize * 1.25;
+
+          const candidatePositions = [
+            { x: cand.projX, y: cand.projY },
+            { x: cand.projX, y: cand.projY - labelHeight * 0.9 },
+            { x: cand.projX, y: cand.projY + labelHeight * 0.9 }
+          ];
+
+          if (cand.wallWidth > labelWidth * 1.3) {
+            candidatePositions.push({ x: cand.projX - labelWidth * 0.25, y: cand.projY });
+            candidatePositions.push({ x: cand.projX + labelWidth * 0.25, y: cand.projY });
+          }
+
+          let bestPos = null;
+          let bestRect = null;
+
+          for (const pos of candidatePositions) {
+            const candidateRect = {
+              x: pos.x - labelWidth / 2 - currentFontSize * 0.08,
+              y: pos.y - labelHeight / 2 - currentFontSize * 0.08,
+              w: labelWidth + currentFontSize * 0.16,
+              h: labelHeight + currentFontSize * 0.16
+            };
+
+            let conflict = false;
+            for (const r of placedRects) {
+              if (rectsOverlap(candidateRect, r)) {
+                conflict = true;
+                break;
+              }
+            }
+
+            if (!conflict) {
+              bestPos = pos;
+              bestRect = candidateRect;
+              break;
+            }
+          }
+
+          // If standard size didn't fit, try once with slightly reduced font size
+          if (!bestPos) {
+            const reducedFontSize = currentFontSize * 0.82;
+            const rWidth = textLen * (reducedFontSize * 0.52) + (reducedFontSize * 0.6);
+            const rHeight = reducedFontSize * 1.25;
+
+            const reducedPositions = [
+              { x: cand.projX, y: cand.projY },
+              { x: cand.projX, y: cand.projY - rHeight * 0.85 },
+              { x: cand.projX, y: cand.projY + rHeight * 0.85 }
+            ];
+
+            for (const pos of reducedPositions) {
+              const candidateRect = {
+                x: pos.x - rWidth / 2,
+                y: pos.y - rHeight / 2,
+                w: rWidth,
+                h: rHeight
+              };
+
+              let conflict = false;
+              for (const r of placedRects) {
+                if (rectsOverlap(candidateRect, r)) {
+                  conflict = true;
+                  break;
+                }
+              }
+
+              if (!conflict) {
+                bestPos = pos;
+                bestRect = candidateRect;
+                currentFontSize = reducedFontSize;
+                break;
+              }
+            }
+          }
+
+          // If still conflicting and not the selected space, omit to avoid overlapping text
+          if (!bestPos && !isSelected) {
+            return;
+          }
+
+          const renderPos = bestPos || { x: cand.projX, y: cand.projY };
+          if (bestRect) {
+            placedRects.push(bestRect);
+          } else {
+            placedRects.push({
+              x: renderPos.x - labelWidth / 2,
+              y: renderPos.y - labelHeight / 2,
+              w: labelWidth,
+              h: labelHeight
+            });
+          }
+
+          const textElem = Vector2DRenderer.createSvgElement('text', {
+            x: renderPos.x,
+            y: renderPos.y,
+            'font-size': currentFontSize,
+            'text-anchor': 'middle',
+            'dominant-baseline': 'middle',
+            fill: '#0F172A',
+            'font-weight': '600',
+            class: 'space-label',
+            'data-space-id': space.id,
+            'data-sel': space.id
+          }, mainGroup);
+          textElem.textContent = space.name;
+        });
+      }
+
+      Vector2DRenderer.drawScaleBar(mainGroup, minX, -groundZ + padding * 0.8, extent, baseFontSize);
 
       const trueFacadeAzimuth = ((modelAzimuth + model.project.bldgAz) % 360 + 360) % 360;
       const cardinalLabel = GeometryEngine.getCardinalDirection(trueFacadeAzimuth);
-      const labelOffset = Math.max(...model.stories.map(s => `${s.name} ${XmlUtils.formatDecimal(s.z, 1)}′`.length)) * fontSize * 0.9 * 0.62 + padding * 0.6;
+      const labelOffset = Math.max(...model.stories.map(s => `${s.name} ${XmlUtils.formatDecimal(s.z, 1)}′`.length)) * baseFontSize * 0.9 * 0.62 + padding * 0.6;
 
       return {
         viewBox: [minX - labelOffset, -maxZ - padding, (maxX - minX) + labelOffset + padding * 0.8, (maxZ - groundZ) + padding * 2.4],
@@ -1063,7 +1248,8 @@
       this.boundingSphere = null;
       this.model = null;
       this.showShades = true;
-      this.showLabels = true;
+      this.showLabels = false;
+      this.fontScale = 1.0;
       this.currentStory = '__all';
       this.selectedId = null;
       this.selectedSpaceId = null;
@@ -1377,6 +1563,11 @@
       this.update3DLabels();
     }
 
+    setFontScale(scale) {
+      this.fontScale = scale || 1.0;
+      this.update3DLabels();
+    }
+
     setLabelsVisible(visible) {
       this.showLabels = visible;
       if (this.labelsOverlay) {
@@ -1398,6 +1589,10 @@
       const w = this.container.clientWidth;
       const h = this.container.clientHeight;
       if (w <= 0 || h <= 0 || !this.camera) return;
+
+      const fontScale = this.fontScale || 1.0;
+      const basePx = 11;
+      const scaledPx = Math.round(basePx * fontScale);
 
       // Filter candidates for the currently isolated story (or all stories if '__all')
       const candidates = [];
@@ -1440,12 +1635,15 @@
       const placedRects = [];
       function collides(r1, r2) {
         return !(r1.x + r1.w < r2.x || r2.x + r2.w < r1.x ||
-                 r1.y + r1.h < r2.y || r2.y + r2.h < r1.y);
+          r1.y + r1.h < r2.y || r2.y + r2.h < r1.y);
       }
 
       candidates.forEach(cand => {
         const el = cand.item.el;
         const isSelected = cand.isSelected;
+
+        el.style.fontSize = `${scaledPx}px`;
+        el.style.padding = `${Math.max(1, Math.round(2 * fontScale))}px ${Math.max(4, Math.round(7 * fontScale))}px`;
 
         // Apply selection / fading classes
         if (this.selectedSpaceId) {
@@ -1456,8 +1654,8 @@
           el.classList.remove('label-dim');
         }
 
-        const lw = el.offsetWidth || (cand.item.space.name.length * 7.5 + 18);
-        const lh = el.offsetHeight || 22;
+        const lw = el.offsetWidth || (cand.item.space.name.length * (7.5 * fontScale) + 18 * fontScale);
+        const lh = el.offsetHeight || (22 * fontScale);
 
         let bestX = cand.sx;
         let bestY = cand.sy;
@@ -1651,7 +1849,12 @@
         mode: 'construction',  // 'construction' | 'type' | 'zone' | 'space'
         isolate: null,
         showShades: true,
-        showLabels: true,
+        labelsByView: {
+          plan: true,
+          elev: false,
+          '3d': false
+        },
+        labelFontScale: 1.0,
         selectedId: null,
         viewBoxes: {},
         baseViewBox: null
@@ -1730,21 +1933,27 @@
         }
       });
 
-      // View Buttons
+      // View Buttons - sync space labels checkbox state per view
       document.getElementById('view-btn-plan').addEventListener('click', () => {
         this.state.view = 'plan';
+        const cb = document.getElementById('label-toggle');
+        if (cb) cb.checked = Boolean(this.state.labelsByView.plan);
         this.renderSubtabs();
         this.render();
       });
 
       document.getElementById('view-btn-elev').addEventListener('click', () => {
         this.state.view = 'elev';
+        const cb = document.getElementById('label-toggle');
+        if (cb) cb.checked = Boolean(this.state.labelsByView.elev);
         this.renderSubtabs();
         this.render();
       });
 
       document.getElementById('view-btn-3d').addEventListener('click', () => {
         this.state.view = '3d';
+        const cb = document.getElementById('label-toggle');
+        if (cb) cb.checked = Boolean(this.state.labelsByView['3d']);
         this.renderSubtabs();
         this.render();
       });
@@ -1770,14 +1979,14 @@
       });
 
       document.getElementById('label-toggle').addEventListener('change', e => {
-        this.state.showLabels = e.target.checked;
-        if (this.threeViewer) {
-          this.threeViewer.setLabelsVisible(this.state.showLabels);
+        this.state.labelsByView[this.state.view] = e.target.checked;
+        if (this.state.view === '3d' && this.threeViewer) {
+          this.threeViewer.setLabelsVisible(e.target.checked);
         }
         this.render();
       });
 
-      // Fit / Zoom Buttons
+      // Fit View Button
       document.getElementById('fit-btn').addEventListener('click', () => {
         if (this.state.view === '3d' && this.threeViewer) {
           this.threeViewer.fitView();
@@ -1790,31 +1999,21 @@
         }
       });
 
-      document.getElementById('zoom-in-btn').addEventListener('click', () => {
-        if (this.state.view === '3d' && this.threeViewer && this.threeViewer.camera && this.threeViewer.controls) {
-          this.threeViewer.camera.position.lerp(this.threeViewer.controls.target, 0.2);
-          this.threeViewer.controls.update();
-          return;
+      // Space Labels Font Size Adjustment Buttons (A+ / A-)
+      document.getElementById('font-inc-btn').addEventListener('click', () => {
+        this.state.labelFontScale = Math.min(2.4, Math.round((this.state.labelFontScale + 0.15) * 100) / 100);
+        if (this.threeViewer) {
+          this.threeViewer.setFontScale(this.state.labelFontScale);
         }
-        const currentVb = (this.svgElement.getAttribute('viewBox') || '0 0 100 100').split(/\s+/).map(Number);
-        const cx = currentVb[0] + currentVb[2] / 2;
-        const cy = currentVb[1] + currentVb[3] / 2;
-        const f = 0.8;
-        this.setSvgViewBox([cx - (currentVb[2] * f) / 2, cy - (currentVb[3] * f) / 2, currentVb[2] * f, currentVb[3] * f]);
+        this.render();
       });
 
-      document.getElementById('zoom-out-btn').addEventListener('click', () => {
-        if (this.state.view === '3d' && this.threeViewer && this.threeViewer.camera && this.threeViewer.controls) {
-          const dir = new THREE.Vector3().subVectors(this.threeViewer.camera.position, this.threeViewer.controls.target).multiplyScalar(1.25);
-          this.threeViewer.camera.position.addVectors(this.threeViewer.controls.target, dir);
-          this.threeViewer.controls.update();
-          return;
+      document.getElementById('font-dec-btn').addEventListener('click', () => {
+        this.state.labelFontScale = Math.max(0.6, Math.round((this.state.labelFontScale - 0.15) * 100) / 100);
+        if (this.threeViewer) {
+          this.threeViewer.setFontScale(this.state.labelFontScale);
         }
-        const currentVb = (this.svgElement.getAttribute('viewBox') || '0 0 100 100').split(/\s+/).map(Number);
-        const cx = currentVb[0] + currentVb[2] / 2;
-        const cy = currentVb[1] + currentVb[3] / 2;
-        const f = 1.25;
-        this.setSvgViewBox([cx - (currentVb[2] * f) / 2, cy - (currentVb[3] * f) / 2, currentVb[2] * f, currentVb[3] * f]);
+        this.render();
       });
 
       document.getElementById('clear-sel').addEventListener('click', () => {
@@ -2009,6 +2208,16 @@
       this.renderSubtabs();
       this.renderLegend();
       this.renderScheduleTable();
+      this.state.labelsByView = {
+        plan: true,
+        elev: false,
+        '3d': false
+      };
+      const labelToggle = document.getElementById('label-toggle');
+      if (labelToggle) {
+        labelToggle.checked = Boolean(this.state.labelsByView[this.state.view]);
+      }
+
       this.renderSpacesTable();
       this.render();
       this.showElementInfo(null);
@@ -2019,6 +2228,8 @@
           this.threeViewer = new ThreeDViewer(this.threeContainer, id => this.showElementInfo(id));
         }
         this.threeViewer.loadModel(model, this.state.mode, maps, this.state.showShades);
+        this.threeViewer.setFontScale(this.state.labelFontScale);
+        this.threeViewer.setLabelsVisible(Boolean(this.state.labelsByView['3d']));
       }
 
       return model;
@@ -2028,7 +2239,19 @@
       const m = this.state.model;
       const selObj = m && this.state.selectedId ? m.byId[this.state.selectedId] : null;
       const isSpaceSelected = Boolean(selObj && selObj.kind === 'space');
-      const selectedSpaceId = isSpaceSelected ? selObj.id : null;
+      const selectedSpaceId = isSpaceSelected
+        ? selObj.id
+        : (selObj && selObj.kind === 'surface' && selObj.spaceId)
+          ? selObj.spaceId
+          : (selObj && selObj.kind === 'opening' && selObj.surfaceId && m && m.byId[selObj.surfaceId])
+            ? m.byId[selObj.surfaceId].spaceId
+            : null;
+
+      const isLabelsVisible = Boolean(this.state.labelsByView[this.state.view]);
+      const labelToggle = document.getElementById('label-toggle');
+      if (labelToggle && labelToggle.checked !== isLabelsVisible) {
+        labelToggle.checked = isLabelsVisible;
+      }
 
       if (this.state.view === '3d') {
         this.svgElement.style.display = 'none';
@@ -2040,7 +2263,8 @@
         } else {
           this.threeViewer.updateColors(this.state.mode, this.state.maps);
           this.threeViewer.setStory(this.state.story3d || '__all');
-          this.threeViewer.setLabelsVisible(this.state.showLabels);
+          this.threeViewer.setFontScale(this.state.labelFontScale);
+          this.threeViewer.setLabelsVisible(isLabelsVisible);
           this.threeViewer.applyIsolation(this.state.isolate, this.state.mode);
           this.threeViewer.applySelection(this.state.selectedId, selectedSpaceId);
           this.threeViewer.handleResize();
@@ -2063,7 +2287,9 @@
           mode: this.state.mode,
           maps: this.state.maps,
           showShades: this.state.showShades,
-          showLabels: this.state.showLabels
+          showLabels: isLabelsVisible,
+          labelFontScale: this.state.labelFontScale,
+          selectedId: this.state.selectedId
         };
 
         const result = this.state.view === 'plan'
@@ -2211,7 +2437,13 @@
       const m = this.state.model;
       const selObj = m && this.state.selectedId ? m.byId[this.state.selectedId] : null;
       const isSpaceSelected = Boolean(selObj && selObj.kind === 'space');
-      const selectedSpaceId = isSpaceSelected ? selObj.id : null;
+      const selectedSpaceId = isSpaceSelected
+        ? selObj.id
+        : (selObj && selObj.kind === 'surface' && selObj.spaceId)
+          ? selObj.spaceId
+          : (selObj && selObj.kind === 'opening' && selObj.surfaceId && m && m.byId[selObj.surfaceId])
+            ? m.byId[selObj.surfaceId].spaceId
+            : null;
 
       if (this.state.view === '3d' && this.threeViewer) {
         this.threeViewer.applySelection(this.state.selectedId, selectedSpaceId);
