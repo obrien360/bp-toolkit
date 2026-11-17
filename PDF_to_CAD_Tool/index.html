@@ -230,7 +230,7 @@
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            Export DWG / DXF
+            Export DXF / CAD
           </button>
         </div>
       </div>
@@ -242,7 +242,7 @@
           <div class="btn-segmented">
             <button class="seg-btn active" data-mode="single" id="btnModeSingle">Level by Level</button>
             <button class="seg-btn" data-mode="overlay" id="btnModeOverlay">Multi-Level Overlay</button>
-            <button class="seg-btn" data-mode="spread" id="btnModeSpread">Spread-Out (DWG Layout)</button>
+            <button class="seg-btn" data-mode="spread" id="btnModeSpread">Spread-Out Layout</button>
           </div>
         </div>
 
@@ -353,9 +353,9 @@
     <section class="card section-card" id="sectionExport" style="display: none;">
       <div class="card-header">
         <div>
-          <h2>4. Export Clean DWG / DXF Files</h2>
-          <p class="subtitle">Download production-ready CAD files with proper AutoCAD layers, single-line walls, and
-            closed polyloops.</p>
+          <h2>4. Export Clean CAD Files</h2>
+          <p class="subtitle">Download production-ready DXF files with proper AutoCAD layers, single-line walls, and
+            closed polyloops. Import directly into SketchUp Pro, AutoCAD, Rhino, or Revit via File &gt; Import.</p>
         </div>
       </div>
 
@@ -364,9 +364,9 @@
         <div class="export-card featured">
           <div class="export-card-badge">Rule 4 Standard</div>
           <div class="export-icon">📐</div>
-          <h3>Spread-Out DWG / DXF</h3>
+          <h3>Spread-Out DXF</h3>
           <p>All levels exported side-by-side horizontally at equal distance (120% of maximum width), with floor title
-            labels. Perfect for 2D architectural review in AutoCAD or Rhino.</p>
+            labels. Perfect for 2D architectural review in AutoCAD, SketchUp, or Rhino.</p>
           <div class="export-btn-group">
             <button id="btnDownloadSpreadDWG" class="btn-primary">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -374,9 +374,9 @@
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              Download Spread .DWG
+              Download Spread .DXF
             </button>
-            <button id="btnDownloadSpreadDXF" class="btn-secondary">Download .DXF</button>
+            <button id="btnDownloadSpreadDXF" class="btn-secondary" style="display:none"></button>
           </div>
         </div>
 
@@ -384,8 +384,9 @@
         <div class="export-card">
           <div class="export-card-badge tag-blue">BIM / Simulation</div>
           <div class="export-icon">🏢</div>
-          <h3>Aligned / Origin Stacked DWG</h3>
-          <p>All levels share identical coordinate origins (X=0, Y=0). Ideal for direct import into Revit, CBECC-Com,
+          <h3>Aligned / Origin Stacked DXF</h3>
+          <p>All levels share identical coordinate origins (X=0, Y=0). Ideal for direct import into SketchUp Pro, Revit,
+            CBECC-Com,
             EnergyPlus, OpenStudio, or Rhino 3D modelers.</p>
           <div class="export-btn-group">
             <button id="btnDownloadAlignedDWG" class="btn-primary">
@@ -394,9 +395,9 @@
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              Download Aligned .DWG
+              Download Aligned .DXF
             </button>
-            <button id="btnDownloadAlignedDXF" class="btn-secondary">Download .DXF</button>
+            <button id="btnDownloadAlignedDXF" class="btn-secondary" style="display:none"></button>
           </div>
         </div>
 

@@ -24,7 +24,6 @@ Key Capabilities:
 
 import math
 import os
-import shutil
 import re
 from collections import defaultdict
 import numpy as np
@@ -673,9 +672,7 @@ def export_cad_files(processed_data, output_dir, file_prefix='Zoning_Clean', spa
         
         filename_suffix = "_Spread" if mode == 'spread' else "_Aligned"
         dxf_name = f"{file_prefix}{filename_suffix}.dxf"
-        dwg_name = f"{file_prefix}{filename_suffix}.dwg"
         dxf_path = os.path.join(output_dir, dxf_name)
-        dwg_path = os.path.join(output_dir, dwg_name)
         
         export_order = spread_order if mode == 'spread' else conversion_order
         for idx, lvl_name in enumerate(export_order):
@@ -731,15 +728,16 @@ def export_cad_files(processed_data, output_dir, file_prefix='Zoning_Clean', spa
                 ).set_placement((title_x, title_y, 0), align=TextEntityAlignment.MIDDLE_CENTER)
                 
         doc.saveas(dxf_path)
-        # Duplicate to .dwg for direct DWG users
-        shutil.copyfile(dxf_path, dwg_path)
+        # NOTE: We no longer copy the DXF as a fake .dwg.
+        # DWG is a proprietary binary format that differs from DXF (ASCII text).
+        # Modern SketchUp (and other importers) check magic bytes and reject renamed DXF files.
+        # Users should import the .dxf directly — SketchUp Pro's File > Import dialog
+        # accepts both *.dwg and *.dxf formats natively.
         
         generated_files.append({
             'mode': mode,
             'dxf_name': dxf_name,
-            'dwg_name': dwg_name,
-            'dxf_path': dxf_path,
-            'dwg_path': dwg_path
+            'dxf_path': dxf_path
         })
         
     return generated_files

@@ -1771,8 +1771,12 @@ async function exportCAD(layoutMode, format) {
         if (format === 'png') {
           window.location.href = data.verification_plot.url;
         } else {
+          // Both 'dwg' and 'dxf' buttons deliver the DXF file.
+          // The DWG format is a proprietary binary format; modern SketchUp and other
+          // importers validate magic bytes and reject a DXF renamed as .dwg.
+          // SketchUp Pro's File > Import dialog accepts *.dxf natively.
           const targetFile = data.files.find(f => f.mode === layoutMode) || data.files[0];
-          window.location.href = format === 'dwg' ? targetFile.dwg_url : targetFile.dxf_url;
+          window.location.href = targetFile.dxf_url;
         }
         return;
       }
@@ -1784,7 +1788,9 @@ async function exportCAD(layoutMode, format) {
   // Client-Side DXF Generator Fallback
   try {
     const rawPrefix = (state.filename || 'Zoning').replace(/\.pdf$/i, '');
-    const filename = `${rawPrefix}_Clean_${layoutMode === 'spread' ? 'Spread' : 'Aligned'}.${format}`;
+    // Always use .dxf extension — DWG is a proprietary binary format and cannot
+    // be generated client-side. The DXF is importable into SketchUp Pro natively.
+    const filename = `${rawPrefix}_Clean_${layoutMode === 'spread' ? 'Spread' : 'Aligned'}.dxf`;
 
     if (format === 'png') {
       // Export canvas snapshot
@@ -1796,7 +1802,7 @@ async function exportCAD(layoutMode, format) {
     }
 
     const dxfString = generateDxfStringJS(state.processedData, layoutMode);
-    const blob = new Blob([dxfString], { type: format === 'dwg' ? 'application/acad' : 'application/dxf' });
+    const blob = new Blob([dxfString], { type: 'application/dxf' });
     hideLoading();
     downloadBlob(blob, filename);
   } catch (err) {
@@ -1817,27 +1823,155 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-// Generate ASCII DXF R2010 (AC1024) format in Pure JavaScript
+// Generate fully spec-compliant DXF R2010 (AC1024) format in Pure JavaScript.
+// Matches ezdxf output: CRLF line endings, padded group codes, handle codes,
+// AcDb subclass markers, CLASSES / BLOCKS / OBJECTS sections — all required by SketchUp.
 function generateDxfStringJS(data, layoutMode) {
   const levels = data.conversion_order;
   const exportOrder = layoutMode === 'spread' ? (data.spread_order || levels) : levels;
   const spacingDx = data.spacing_ft;
 
-  let out = '';
-  out += '0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1024\n0\nENDSEC\n';
-  out += '0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n';
+  // DXF uses CRLF and right-justified group codes padded to width 3
+  const CRLF = '\r\n';
+  // handle counter — each entity needs a unique hex handle
+  let _handle = 0x20;
+  function nextHandle() { return (_handle++).toString(16).toUpperCase(); }
 
-  // Define layers
+  // Helper: group code + value pair
+  function g(code, value) {
+    const padded = String(code).padStart(3, ' ');
+    return `${padded}${CRLF}${value}${CRLF}`;
+  }
+
+  // Build layer definitions
+  const layerColors = [
+    { lines: 7, poly: 3, text: 2 },
+    { lines: 1, poly: 4, text: 6 },
+    { lines: 5, poly: 2, text: 3 },
+    { lines: 4, poly: 1, text: 7 },
+  ];
+  const layers = [];
   exportOrder.forEach((lvlName, idx) => {
-    const safeLvl = lvlName.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-    out += `0\nLAYER\n2\n${safeLvl}\n70\n0\n62\n${idx === 0 ? 7 : 1}\n6\nCONTINUOUS\n`;
-    out += `0\nLAYER\n2\n${safeLvl}_POLYLOOPS\n70\n0\n62\n${idx === 0 ? 3 : 4}\n6\nCONTINUOUS\n`;
-    out += `0\nLAYER\n2\n${safeLvl}_TEXT\n70\n0\n62\n${idx === 0 ? 2 : 6}\n6\nCONTINUOUS\n`;
+    const safe = lvlName.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    const pal = layerColors[idx % layerColors.length];
+    layers.push({ name: safe,              color: pal.lines });
+    layers.push({ name: safe + '_POLYLOOPS', color: pal.poly  });
+    layers.push({ name: safe + '_TEXT',    color: pal.text  });
   });
-  out += '0\nENDTAB\n0\nENDSEC\n';
 
-  // Entities Section
-  out += '0\nSECTION\n2\nENTITIES\n';
+  let out = '';
+
+  // ── HEADER ──────────────────────────────────────────────────────────────────
+  out += g(0, 'SECTION') + g(2, 'HEADER');
+  out += g(9, '$ACADVER')     + g(1,  'AC1024');
+  out += g(9, '$ACADMAINTVER')+ g(70, '6');
+  out += g(9, '$DWGCODEPAGE') + g(3,  'ANSI_1252');
+  out += g(9, '$INSBASE')     + g(10,'0.0') + g(20,'0.0') + g(30,'0.0');
+  out += g(9, '$EXTMIN')      + g(10,'1e+20')  + g(20,'1e+20')  + g(30,'1e+20');
+  out += g(9, '$EXTMAX')      + g(10,'-1e+20') + g(20,'-1e+20') + g(30,'-1e+20');
+  out += g(9, '$LIMMIN')      + g(10,'0.0') + g(20,'0.0');
+  out += g(9, '$LIMMAX')      + g(10,'420.0') + g(20,'297.0');
+  out += g(9, '$ORTHOMODE')   + g(70,'0');
+  out += g(9, '$REGENMODE')   + g(70,'1');
+  out += g(9, '$FILLMODE')    + g(70,'1');
+  out += g(9, '$QTEXTMODE')   + g(70,'0');
+  out += g(9, '$LTSCALE')     + g(40,'1.0');
+  out += g(9, '$ATTMODE')     + g(70,'1');
+  out += g(9, '$TEXTSIZE')    + g(40,'2.5');
+  out += g(9, '$TEXTSTYLE')   + g(7, 'Standard');
+  out += g(9, '$CLAYER')      + g(8, '0');
+  out += g(9, '$CELTYPE')     + g(6, 'ByLayer');
+  out += g(9, '$CECOLOR')     + g(62,'256');
+  out += g(9, '$CELTSCALE')   + g(40,'1.0');
+  out += g(9, '$LUNITS')      + g(70,'2');   // Feet linear units
+  out += g(9, '$LUPREC')      + g(70,'4');
+  out += g(9, '$AUNITS')      + g(70,'0');
+  out += g(9, '$AUPREC')      + g(70,'2');
+  out += g(9, '$ANGBASE')     + g(50,'0.0');
+  out += g(9, '$ANGDIR')      + g(70,'0');
+  out += g(9, '$MEASUREMENT') + g(70,'0');   // Imperial
+  out += g(9, '$INSUNITS')    + g(70,'2');   // 2 = Feet — required for correct SketchUp scale
+  out += g(9, '$LTSCALE')     + g(40,'1.0');
+  out += g(9, '$WORLDVIEW')   + g(70,'1');
+  out += g(9, '$TILEMODE')    + g(70,'1');
+  out += g(9, '$PLINEGEN')    + g(70,'0');
+  out += g(9, '$PROXYGRAPHICS')+ g(70,'1');
+  out += g(9, '$HANDSEED')    + g(5, 'FFFF');
+  out += g(0, 'ENDSEC');
+
+  // ── CLASSES (required stub) ──────────────────────────────────────────────────
+  out += g(0, 'SECTION') + g(2, 'CLASSES') + g(0, 'ENDSEC');
+
+  // ── TABLES ──────────────────────────────────────────────────────────────────
+  out += g(0, 'SECTION') + g(2, 'TABLES');
+
+  // VPORT table (required)
+  const hVport = nextHandle();
+  out += g(0,'TABLE') + g(2,'VPORT') + g(5,hVport) + g(330,'0') + g(100,'AcDbSymbolTable') + g(70,'0') + g(0,'ENDTAB');
+
+  // LTYPE table with CONTINUOUS
+  const hLtype = nextHandle();
+  const hLtypeCont = nextHandle();
+  out += g(0,'TABLE') + g(2,'LTYPE') + g(5,hLtype) + g(330,'0') + g(100,'AcDbSymbolTable') + g(70,'1');
+  out += g(0,'LTYPE') + g(5,hLtypeCont) + g(330,hLtype) + g(100,'AcDbSymbolTableRecord') + g(100,'AcDbLinetypeTableRecord');
+  out += g(2,'Continuous') + g(70,'0') + g(3,'Solid line') + g(72,'65') + g(73,'0') + g(40,'0.0');
+  out += g(0,'ENDTAB');
+
+  // LAYER table
+  const hLayerTable = nextHandle();
+  out += g(0,'TABLE') + g(2,'LAYER') + g(5,hLayerTable) + g(330,'0') + g(100,'AcDbSymbolTable') + g(70, String(layers.length));
+  // Layer 0 (required default)
+  const hLayer0 = nextHandle();
+  out += g(0,'LAYER') + g(5,hLayer0) + g(330,hLayerTable) + g(100,'AcDbSymbolTableRecord') + g(100,'AcDbLayerTableRecord');
+  out += g(2,'0') + g(70,'0') + g(62,'7') + g(6,'Continuous') + g(370,'-3');
+  layers.forEach(lyr => {
+    const hLyr = nextHandle();
+    out += g(0,'LAYER') + g(5,hLyr) + g(330,hLayerTable) + g(100,'AcDbSymbolTableRecord') + g(100,'AcDbLayerTableRecord');
+    out += g(2,lyr.name) + g(70,'0') + g(62, String(lyr.color)) + g(6,'Continuous') + g(370,'-3');
+  });
+  out += g(0,'ENDTAB');
+
+  // STYLE table (required)
+  const hStyleTable = nextHandle();
+  const hStyle = nextHandle();
+  out += g(0,'TABLE') + g(2,'STYLE') + g(5,hStyleTable) + g(330,'0') + g(100,'AcDbSymbolTable') + g(70,'1');
+  out += g(0,'STYLE') + g(5,hStyle) + g(330,hStyleTable) + g(100,'AcDbSymbolTableRecord') + g(100,'AcDbTextStyleTableRecord');
+  out += g(2,'Standard') + g(70,'0') + g(40,'0.0') + g(41,'1.0') + g(50,'0.0') + g(71,'0') + g(42,'2.5') + g(3,'txt') + g(4,'');
+  out += g(0,'ENDTAB');
+
+  // VIEW, UCS, APPID, DIMSTYLE tables (required stubs)
+  ['VIEW','UCS','APPID','DIMSTYLE'].forEach(tname => {
+    const h = nextHandle();
+    out += g(0,'TABLE') + g(2,tname) + g(5,h) + g(330,'0') + g(100,'AcDbSymbolTable') + g(70,'0') + g(0,'ENDTAB');
+  });
+
+  // BLOCK_RECORD table
+  const hBRTable = nextHandle();
+  const hBRModel = nextHandle();
+  const hBRPaper = nextHandle();
+  out += g(0,'TABLE') + g(2,'BLOCK_RECORD') + g(5,hBRTable) + g(330,'0') + g(100,'AcDbSymbolTable') + g(70,'2');
+  out += g(0,'BLOCK_RECORD') + g(5,hBRModel) + g(330,hBRTable) + g(100,'AcDbSymbolTableRecord') + g(2,'*Model_Space');
+  out += g(0,'BLOCK_RECORD') + g(5,hBRPaper) + g(330,hBRTable) + g(100,'AcDbSymbolTableRecord') + g(2,'*Paper_Space');
+  out += g(0,'ENDTAB');
+
+  out += g(0,'ENDSEC');
+
+  // ── BLOCKS (required: *Model_Space and *Paper_Space stubs) ──────────────────
+  out += g(0,'SECTION') + g(2,'BLOCKS');
+  const hBlockModel1 = nextHandle();
+  const hBlockModel2 = nextHandle();
+  out += g(0,'BLOCK') + g(5,hBlockModel1) + g(330,hBRModel) + g(100,'AcDbEntity') + g(8,'0') + g(100,'AcDbBlockBegin');
+  out += g(2,'*Model_Space') + g(70,'0') + g(10,'0.0') + g(20,'0.0') + g(30,'0.0') + g(3,'*Model_Space') + g(1,'');
+  out += g(0,'ENDBLK') + g(5,hBlockModel2) + g(330,hBRModel) + g(100,'AcDbEntity') + g(8,'0') + g(100,'AcDbBlockEnd');
+  const hBlockPaper1 = nextHandle();
+  const hBlockPaper2 = nextHandle();
+  out += g(0,'BLOCK') + g(5,hBlockPaper1) + g(330,hBRPaper) + g(100,'AcDbEntity') + g(8,'0') + g(100,'AcDbBlockBegin');
+  out += g(2,'*Paper_Space') + g(70,'0') + g(10,'0.0') + g(20,'0.0') + g(30,'0.0') + g(3,'*Paper_Space') + g(1,'');
+  out += g(0,'ENDBLK') + g(5,hBlockPaper2) + g(330,hBRPaper) + g(100,'AcDbEntity') + g(8,'0') + g(100,'AcDbBlockEnd');
+  out += g(0,'ENDSEC');
+
+  // ── ENTITIES ─────────────────────────────────────────────────────────────────
+  out += g(0,'SECTION') + g(2,'ENTITIES');
 
   exportOrder.forEach((lvlName, idx) => {
     const lvl = data.levels[lvlName];
@@ -1845,31 +1979,55 @@ function generateDxfStringJS(data, layoutMode) {
     const safeLvl = lvlName.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
     const dxOffset = layoutMode === 'spread' ? idx * spacingDx : 0;
 
-    // Walls
+    // Walls (LINE entities with AcDb subclass markers)
     lvl.planar_graph.segments.forEach(([p1, p2]) => {
-      out += `0\nLINE\n8\n${safeLvl}\n10\n${(p1[0] + dxOffset).toFixed(3)}\n20\n${p1[1].toFixed(3)}\n30\n0.0\n11\n${(p2[0] + dxOffset).toFixed(3)}\n21\n${p2[1].toFixed(3)}\n31\n0.0\n`;
+      const h = nextHandle();
+      out += g(0,'LINE') + g(5,h) + g(330,hBRModel) + g(100,'AcDbEntity') + g(8,safeLvl) + g(100,'AcDbLine');
+      out += g(10,(p1[0]+dxOffset).toFixed(3)) + g(20,p1[1].toFixed(3)) + g(30,'0.0');
+      out += g(11,(p2[0]+dxOffset).toFixed(3)) + g(21,p2[1].toFixed(3)) + g(31,'0.0');
     });
 
-    // Polyloops
+    // Polyloops (LWPOLYLINE)
     lvl.planar_graph.polyloops.forEach(poly => {
-      out += `0\nLWPOLYLINE\n8\n${safeLvl}_POLYLOOPS\n90\n${poly.coords.length}\n70\n1\n`;
+      const h = nextHandle();
+      out += g(0,'LWPOLYLINE') + g(5,h) + g(330,hBRModel) + g(100,'AcDbEntity') + g(8,safeLvl+'_POLYLOOPS');
+      out += g(100,'AcDbPolyline') + g(90, String(poly.coords.length)) + g(70,'1');
       poly.coords.forEach(pt => {
-        out += `10\n${(pt[0] + dxOffset).toFixed(3)}\n20\n${pt[1].toFixed(3)}\n`;
+        out += g(10,(pt[0]+dxOffset).toFixed(3)) + g(20,pt[1].toFixed(3));
       });
     });
 
-    // Labels
+    // Room labels (TEXT)
     lvl.zones.forEach(z => {
-      out += `0\nTEXT\n8\n${safeLvl}_TEXT\n10\n${(z.centroid[0] + dxOffset).toFixed(3)}\n20\n${z.centroid[1].toFixed(3)}\n30\n0.0\n40\n2.0\n1\n${z.name} (${z.area_calc} sf)\n72\n1\n73\n2\n11\n${(z.centroid[0] + dxOffset).toFixed(3)}\n21\n${z.centroid[1].toFixed(3)}\n31\n0.0\n`;
+      const h = nextHandle();
+      const cx = (z.centroid[0]+dxOffset).toFixed(3);
+      const cy = z.centroid[1].toFixed(3);
+      out += g(0,'TEXT') + g(5,h) + g(330,hBRModel) + g(100,'AcDbEntity') + g(8,safeLvl+'_TEXT');
+      out += g(100,'AcDbText') + g(10,cx) + g(20,cy) + g(30,'0.0') + g(40,'2.0');
+      out += g(1,`${z.name} (${z.area_calc} sf)`) + g(72,'1') + g(11,cx) + g(21,cy) + g(31,'0.0');
+      out += g(100,'AcDbText') + g(73,'2');
     });
 
+    // Level title (spread mode)
     if (layoutMode === 'spread') {
-      const titleX = (lvl.bounds.min_x + lvl.bounds.max_x) / 2 + dxOffset;
-      const titleY = lvl.bounds.min_y - 10;
-      out += `0\nTEXT\n8\n${safeLvl}_TEXT\n10\n${titleX.toFixed(3)}\n20\n${titleY.toFixed(3)}\n30\n0.0\n40\n4.0\n1\n${lvlName.toUpperCase()}\n72\n1\n73\n2\n11\n${titleX.toFixed(3)}\n21\n${titleY.toFixed(3)}\n31\n0.0\n`;
+      const h = nextHandle();
+      const tx = ((lvl.bounds.min_x + lvl.bounds.max_x) / 2 + dxOffset).toFixed(3);
+      const ty = (lvl.bounds.min_y - 10).toFixed(3);
+      out += g(0,'TEXT') + g(5,h) + g(330,hBRModel) + g(100,'AcDbEntity') + g(8,safeLvl+'_TEXT');
+      out += g(100,'AcDbText') + g(10,tx) + g(20,ty) + g(30,'0.0') + g(40,'4.0');
+      out += g(1,lvlName.toUpperCase()) + g(72,'1') + g(11,tx) + g(21,ty) + g(31,'0.0');
+      out += g(100,'AcDbText') + g(73,'2');
     }
   });
 
-  out += '0\nENDSEC\n0\nEOF\n';
+  out += g(0,'ENDSEC');
+
+  // ── OBJECTS (required: root dictionary) ──────────────────────────────────────
+  out += g(0,'SECTION') + g(2,'OBJECTS');
+  const hRootDict = nextHandle();
+  out += g(0,'DICTIONARY') + g(5,hRootDict) + g(330,'0') + g(100,'AcDbDictionary') + g(281,'1');
+  out += g(0,'ENDSEC');
+
+  out += g(0,'EOF');
   return out;
 }

@@ -292,9 +292,7 @@ class CADToolHandler(http.server.SimpleHTTPRequestHandler):
                 file_downloads.append({
                     "mode": f["mode"],
                     "dxf_name": f["dxf_name"],
-                    "dxf_url": f"/api/download/{f['dxf_name']}",
-                    "dwg_name": f["dwg_name"],
-                    "dwg_url": f"/api/download/{f['dwg_name']}"
+                    "dxf_url": f"/api/download/{f['dxf_name']}"
                 })
 
             self.send_json({
