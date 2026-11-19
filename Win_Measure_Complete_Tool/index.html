@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Window Measurement Completion Tool | O'Brien360</title>
+  <meta name="description"
+    content="Automatically complete window area measurements across architectural elevation PDFs using representative manual markups, edge snapping, and Bluebeam-compatible area annotations.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+  <!-- Brand Stripe -->
+  <div class="brand-stripe"></div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="header-left">
+        <a href="../index.html" class="portal-back-link" title="Return to OB360 Tools portal">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m15 18-6-6 6-6" />
+          </svg>
+          Portal
+        </a>
+        <div class="brand-badge">
+          <img src="assets/ob360_logo_bar.png" alt="O'Brien360" class="header-logo" onerror="this.style.display='none'">
+          <span class="suite-title">PDF Window Measurement Completion Tool</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="btnQuickHelp" class="btn-ghost" title="Workflow guide & technical rules">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          Help & Rules
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="app-container">
+
+    <!-- Section 1: File Input & Quick Demo -->
+    <section class="card section-card" id="sectionUpload">
+      <div class="card-header">
+        <div>
+          <h2>1. Select or Drop Architectural Elevation PDF</h2>
+          <p class="subtitle">Supports multi-page elevation sets with representative manual Bluebeam area measurements.</p>
+        </div>
+        <div class="header-actions">
+          <button id="btnLoadExample" class="btn-secondary" title="Load sample elevation file with 15 representative window types">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
+            Load Example (Windows_Measure_Test.pdf)
+          </button>
+        </div>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".pdf" class="file-input-hidden">
+        <div class="drop-content">
+          <div class="drop-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+              <path d="M12 12v9"></path>
+              <path d="m16 16-4-4-4 4"></path>
+            </svg>
+          </div>
+          <div class="drop-text">
+            <h3>Drag & Drop Elevation PDF here</h3>
+            <p>or click to browse from your computer</p>
+          </div>
+          <button type="button" id="btnBrowse" class="btn-primary">Browse Files</button>
+        </div>
+      </div>
+
+      <!-- File Status Info Card (shown after loading) -->
+      <div id="fileInfoCard" class="file-info-card hidden">
+        <div class="file-info-main">
+          <div class="file-badge-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div class="file-meta">
+            <h4 id="activeFileName">Windows_Measure_Test.pdf</h4>
+            <div class="file-tags">
+              <span class="tag tag-pages" id="detectedPagesBadge">6 Pages</span>
+              <span class="tag tag-manual" id="detectedManualBadge">19 Manual Measurements</span>
+              <span class="tag tag-types" id="detectedTypesBadge">15 Window Types Learned</span>
+            </div>
+          </div>
+        </div>
+        <div class="file-actions">
+          <button id="btnReloadFile" class="btn-ghost" title="Change or re-upload file">Change File</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Window Type Learning & Settings -->
+    <section class="card section-card hidden" id="sectionRules">
+      <div class="card-header">
+        <div>
+          <h2>2. Representative Window Type Learning</h2>
+          <p class="subtitle">Tags are dynamically read directly around the center of each manual measurement (e.g. W01, W03, SD01). No rigid regex pattern required.</p>
+        </div>
+        <div class="header-actions">
+          <button id="btnToggleSettings" class="btn-ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Snapping & Markup Settings
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsible Settings Panel -->
+      <div id="settingsPanel" class="settings-panel hidden">
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label for="chkEnableSnap" class="checkbox-label">
+              <input type="checkbox" id="chkEnableSnap" checked>
+              <span>Enable Vector Drawing-Edge Snapping</span>
+            </label>
+            <span class="setting-desc">Snaps generated bounds to crisp architectural linework rather than relying solely on tag text coordinates.</span>
+          </div>
+
+          <div class="setting-item">
+            <label for="inputSearchRadius">Edge Search Radius (points)</label>
+            <input type="number" id="inputSearchRadius" value="18" min="5" max="40" step="1" class="form-input">
+            <span class="setting-desc">Maximum search distance from predicted center (default 18 pt).</span>
+          </div>
+
+          <div class="setting-item">
+            <label for="inputOverlapThreshold">Double-Count Protection (pt)</label>
+            <input type="number" id="inputOverlapThreshold" value="16" min="8" max="30" step="1" class="form-input">
+            <span class="setting-desc">Prevents adding measurements if within 16 pt or >35% overlap with an existing measurement.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Window Types Table (Scrollable with max height) -->
+      <div class="table-container">
+        <table class="data-table" id="tableWindowTypes">
+          <thead>
+            <tr>
+              <th width="40"><input type="checkbox" id="chkSelectAllTypes" checked></th>
+              <th>Window Tag</th>
+              <th>Manual Samples</th>
+              <th>Total on Sheets</th>
+              <th>Missing to Add</th>
+              <th>Unit Area</th>
+              <th>Dimensions (W × H)</th>
+              <th>Scale Calibration</th>
+              <th>Sheets Found</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyWindowTypes">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 3: Execution & Takeoff Export (Placed BEFORE Viewer as requested) -->
+    <section class="card section-card hidden" id="sectionExecute">
+      <div class="card-header">
+        <div>
+          <h2>3. Execute Measurement Completion & Export Takeoff</h2>
+          <p class="subtitle">Snaps all unmeasured windows, applies Bluebeam-compatible area annotations, and produces window schedules.</p>
+        </div>
+      </div>
+
+      <div class="action-panel">
+        <div class="action-primary-box">
+          <button id="btnRunCompletion" class="btn-action-primary">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <span>Complete Window Measurements</span>
+          </button>
+          <p class="action-caption">Snaps missing windows to vector linework, prevents double-counting, preserves manual markups, and keeps scale calibration.</p>
+        </div>
+
+        <!-- Success Card (shown after execution) -->
+        <div id="completionSuccessCard" class="completion-success-card hidden">
+          <div class="success-card-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </div>
+          <div class="success-card-body">
+            <div class="success-card-title">✓ Completed PDF Generated</div>
+            <div class="success-card-stats">
+              <span id="metricAddedCount" class="success-stat-num">0</span>
+              <span class="success-stat-label">windows added</span>
+              <span class="success-stat-sep">•</span>
+              <span id="metricTotalWindows" class="success-stat-num">0</span>
+              <span class="success-stat-label">total document windows</span>
+            </div>
+          </div>
+          <div class="success-card-actions">
+            <a id="btnDownloadPDF" href="/api/download" class="btn-primary" download>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Download Completed PDF
+            </a>
+            <a id="btnExportCSV" href="/api/export-csv" class="btn-secondary" download>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="8" y1="13" x2="16" y2="13"></line>
+              </svg>
+              Export Takeoff CSV
+            </a>
+          </div>
+        </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 4: Interactive Elevation Sheet Viewer (Placed AFTER Execution for Verification) -->
+    <section class="card section-card hidden" id="sectionViewer">
+      <div class="card-header">
+        <div>
+          <h2>4. Interactive Elevation Sheet Viewer (Visual Verification)</h2>
+          <p class="subtitle">Inspect manual representative markups (blue) and auto-completed markups (red outlines) directly over the architectural drawings.</p>
+        </div>
+        <div class="viewer-toolbar">
+          <div class="page-nav">
+            <button id="btnPrevPage" class="btn-icon" title="Previous sheet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m15 18-6-6 6-6"/>
+              </svg>
+            </button>
+            <span class="page-indicator">
+              Page <select id="selectPageDropdown" class="page-select"></select> of <span id="lblTotalPages">6</span>
+            </span>
+            <button id="btnNextPage" class="btn-icon" title="Next sheet">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="m9 18 6-6-6-6"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="view-controls">
+            <label class="toggle-pill active" id="pillShowManual">
+              <input type="checkbox" id="chkShowManual" checked>
+              <span class="pill-dot dot-manual"></span>
+              Manual Truth
+            </label>
+            <label class="toggle-pill active" id="pillShowCompleted">
+              <input type="checkbox" id="chkShowCompleted" checked>
+              <span class="pill-dot dot-completed"></span>
+              Auto-Completed (Outline)
+            </label>
+            <button id="btnZoomFit" class="btn-ghost btn-sm" title="Fit to view">Fit View</button>
+            <button id="btnZoomIn" class="btn-ghost btn-sm" title="Zoom in">+</button>
+            <button id="btnZoomOut" class="btn-ghost btn-sm" title="Zoom out">-</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canvas Viewport -->
+      <div class="canvas-wrapper" id="canvasWrapper">
+        <canvas id="elevationCanvas"></canvas>
+        <div id="canvasTooltip" class="canvas-tooltip hidden"></div>
+        <div id="canvasLoader" class="canvas-loader hidden">
+          <div class="spinner"></div>
+          <span>Rendering elevation sheet...</span>
+        </div>
+      </div>
+      <div class="canvas-footer">
+        <div class="footer-left">
+          <span id="lblMouseCoords">X: 0 | Y: 0</span>
+          <span id="lblHoverItem" class="hover-details">Hover over a window to inspect</span>
+        </div>
+        <div class="footer-right">
+          <span class="key-shortcut">Scroll: Zoom | Drag: Pan</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Help & Rules Modal -->
+  <div id="helpModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>How PDF Window Measurement Completion Works</h3>
+        <button id="btnCloseHelp" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <h4>1. Ground Truth Learning</h4>
+        <p>The tool scans your elevation PDF for representative manual measurements (Bluebeam Area markups / Polygon annotations) and matches them to nearby window type labels (such as W01, W02, W05). It learns:</p>
+        <ul>
+          <li>Representative window width, height, and area string.</li>
+          <li>Initial label-to-window relative spatial offset.</li>
+          <li>Bluebeam scale calibration (/Measure dictionary, e.g. 1/4" = 1'-0").</li>
+          <li>Stroke color, fill color, and exact 30% fill opacity (/FillOpacity .3, /ca .3).</li>
+        </ul>
+
+        <h4>2. Drawing-Edge Snapping (Computer Vision)</h4>
+        <p>Rather than relying solely on the text label coordinate, the engine renders an edge energy map that filters out light facade hatching while detecting crisp architectural window outlines. It evaluates candidate positions on a sub-point grid and snaps the rectangle to true vector frame lines.</p>
+
+        <h4>3. Double-Counting & Overlap Protection</h4>
+        <p>Before adding any new annotation, the tool performs spatial collision checks against existing manual markups and previously placed windows. Overlapping positions are discarded to ensure total window counts and areas remain 100% accurate.</p>
+
+        <h4>4. Native Bluebeam Revu Compatibility</h4>
+        <p>Generated annotations are written with native PDF /PolygonDimension, /Measure, /Vertices, and /RC rich text structures. When opened in Bluebeam Revu, they are fully editable, selectable, and support recalculation and area takeoff reports.</p>
+      </div>
+      <div class="modal-footer">
+        <button id="btnDismissHelp" class="btn-primary">Got it</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
