@@ -35,6 +35,10 @@
         </div>
       </div>
       <div class="header-right">
+        <span id="serverStatusBadge" class="server-status-pill checking" title="Status of local Python backend">
+          <span class="status-dot"></span>
+          <span class="status-text">Checking Server...</span>
+        </span>
         <button id="btnQuickHelp" class="btn-ghost" title="Workflow guide & technical rules">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="10"></circle>
@@ -67,6 +71,46 @@
             </svg>
             Load Example (Windows_Measure_Test.pdf)
           </button>
+        </div>
+      </div>
+
+      <!-- Offline / GitHub Pages Banner -->
+      <div id="serverOfflineBanner" class="server-offline-banner hidden">
+        <div class="banner-icon-col">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </div>
+        <div class="banner-body">
+          <div class="banner-heading">
+            <strong>Local Python Engine Required to Process PDFs</strong>
+            <span class="banner-tag">GitHub Pages / Static Host Mode</span>
+          </div>
+          <p class="banner-desc">
+            This tool uses a Python vision and geometry engine (<strong>OpenCV, PyMuPDF, SciPy KD-Tree</strong>) to detect corners, snap to architectural linework, and write native Bluebeam Revu <code>/PolygonDimension</code> area measurements into the PDF. Static web hosts (like GitHub Pages) cannot execute Python code.
+          </p>
+          <div class="banner-steps">
+            <span class="steps-title">To process your elevation PDFs on your computer:</span>
+            <ol>
+              <li>Open the repository folder on your machine: <code>Win_Measure_Complete_Tool\</code></li>
+              <li>Double-click <strong><code>run_tool.bat</code></strong> (which starts the engine at <code>http://localhost:8088</code>)</li>
+              <li>Your browser will open automatically with full measurement completion and PDF export active!</li>
+            </ol>
+          </div>
+          <div class="banner-actions">
+            <a href="https://github.com/obrien360/bp-toolkit" target="_blank" class="btn-banner-link">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"></path>
+              </svg>
+              View Repository on GitHub
+            </a>
+            <button type="button" id="btnCopyRunCmd" class="btn-banner-action">
+              📋 Copy "run_tool.bat" Command
+            </button>
+            <span id="copyFeedback" class="copy-feedback hidden">✓ Copied to clipboard!</span>
+          </div>
         </div>
       </div>
 
@@ -302,6 +346,39 @@
     </section>
 
   </main>
+
+  <!-- Local Server Required Modal -->
+  <div id="serverRequiredModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 style="display:flex; align-items:center; gap:8px;">
+          <span style="color:#d97706;">⚠️</span> Local Python Server Required
+        </h3>
+        <button id="btnCloseServerModal" class="btn-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="serverModalFileNotice" style="margin-bottom:12px; font-weight:600; color:var(--ob-dark);">
+          You selected: <span id="serverModalFileName" style="color:var(--ob-blue);">file.pdf</span>
+        </p>
+        <p style="color:#475569; font-size:14px; line-height:1.6; margin-bottom:14px;">
+          Elevation PDF processing, vector linework snapping, and Bluebeam markup creation cannot run directly inside a static web browser on GitHub Pages because they rely on native Python libraries (<strong>PyMuPDF, OpenCV, SciPy</strong>).
+        </p>
+        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:14px; margin-bottom:14px;">
+          <strong style="color:var(--ob-dark); font-size:13px; display:block; margin-bottom:8px;">How to process this PDF on your computer:</strong>
+          <ol style="margin-left:18px; font-size:13px; color:#334155; line-height:1.6;">
+            <li>Ensure Python 3.8+ is installed on your computer.</li>
+            <li>Open the <code>Win_Measure_Complete_Tool</code> folder in your repository.</li>
+            <li>Double-click <strong><code>run_tool.bat</code></strong>.</li>
+            <li>Your browser will launch <strong><code>http://localhost:8088</code></strong> where you can upload and process your file!</li>
+          </ol>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+        <button id="btnDismissServerModal" class="btn-secondary">Close</button>
+        <button id="btnCopyRunCmdModal" class="btn-primary">📋 Copy run_tool.bat</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Help & Rules Modal -->
   <div id="helpModal" class="modal-backdrop hidden">

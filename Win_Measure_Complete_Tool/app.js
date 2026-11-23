@@ -6,6 +6,7 @@
 
 // Application State
 const state = {
+  serverAvailable: false,
   filename: null,
   pageCount: 0,
   currentPage: 0,
@@ -105,7 +106,18 @@ const el = {
   btnQuickHelp: document.getElementById('btnQuickHelp'),
   helpModal: document.getElementById('helpModal'),
   btnCloseHelp: document.getElementById('btnCloseHelp'),
-  btnDismissHelp: document.getElementById('btnDismissHelp')
+  btnDismissHelp: document.getElementById('btnDismissHelp'),
+
+  // Offline / Server Status
+  serverStatusBadge: document.getElementById('serverStatusBadge'),
+  serverOfflineBanner: document.getElementById('serverOfflineBanner'),
+  btnCopyRunCmd: document.getElementById('btnCopyRunCmd'),
+  copyFeedback: document.getElementById('copyFeedback'),
+  serverRequiredModal: document.getElementById('serverRequiredModal'),
+  serverModalFileName: document.getElementById('serverModalFileName'),
+  btnCloseServerModal: document.getElementById('btnCloseServerModal'),
+  btnDismissServerModal: document.getElementById('btnDismissServerModal'),
+  btnCopyRunCmdModal: document.getElementById('btnCopyRunCmdModal')
 };
 
 // Canvas context
@@ -207,6 +219,17 @@ function setupEventListeners() {
     });
   }
 
+  // Server Required Modal & Copy actions
+  if (el.btnCloseServerModal) el.btnCloseServerModal.addEventListener('click', () => el.serverRequiredModal.classList.add('hidden'));
+  if (el.btnDismissServerModal) el.btnDismissServerModal.addEventListener('click', () => el.serverRequiredModal.classList.add('hidden'));
+  if (el.serverRequiredModal) {
+    el.serverRequiredModal.addEventListener('click', e => {
+      if (e.target === el.serverRequiredModal) el.serverRequiredModal.classList.add('hidden');
+    });
+  }
+  if (el.btnCopyRunCmd) el.btnCopyRunCmd.addEventListener('click', copyRunToolCmd);
+  if (el.btnCopyRunCmdModal) el.btnCopyRunCmdModal.addEventListener('click', copyRunToolCmd);
+
   // Window resize
   window.addEventListener('resize', debounce(resizeCanvas, 150));
 }
@@ -215,33 +238,105 @@ function setupEventListeners() {
 // SERVER COMMUNICATION & STATUS
 // ----------------------------------------------------
 async function checkServerStatus() {
+  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+  if (!isLocal || window.location.protocol === 'file:') {
+    setServerStatus(false);
+    return;
+  }
+
   try {
-    const res = await fetch('/api/status');
-    const data = await res.json();
-    if (data.loaded && data.has_analysis) {
-      // Pre-loaded state
-      state.filename = data.filename;
-      state.pageCount = data.page_count;
-      // Fetch full analyze data
-      rescanLabels();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch('/api/status', { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      setServerStatus(true);
+      if (data.loaded && data.has_analysis) {
+        state.filename = data.filename;
+        state.pageCount = data.page_count;
+        rescanLabels();
+      }
+    } else {
+      setServerStatus(false);
     }
   } catch (err) {
-    console.warn('Local server status check:', err);
+    setServerStatus(false);
   }
+}
+
+function setServerStatus(connected) {
+  state.serverAvailable = connected;
+  if (el.serverStatusBadge) {
+    el.serverStatusBadge.className = `server-status-pill ${connected ? 'connected' : 'offline'}`;
+    const text = el.serverStatusBadge.querySelector('.status-text');
+    if (text) text.textContent = connected ? 'Local Server Connected' : 'Local Server Required';
+  }
+  if (el.serverOfflineBanner) {
+    if (connected) {
+      el.serverOfflineBanner.classList.add('hidden');
+    } else {
+      el.serverOfflineBanner.classList.remove('hidden');
+    }
+  }
+}
+
+function showServerRequiredModal(filename) {
+  if (el.serverModalFileName) {
+    el.serverModalFileName.textContent = filename || 'your elevation PDF';
+  }
+  if (el.serverRequiredModal) {
+    el.serverRequiredModal.classList.remove('hidden');
+  }
+}
+
+function copyRunToolCmd() {
+  const cmd = 'run_tool.bat';
+  navigator.clipboard.writeText(cmd).then(() => {
+    if (el.copyFeedback) {
+      el.copyFeedback.classList.remove('hidden');
+      setTimeout(() => el.copyFeedback.classList.add('hidden'), 2500);
+    }
+  }).catch(() => {
+    alert('Command: run_tool.bat (execute in Win_Measure_Complete_Tool folder)');
+  });
 }
 
 async function loadSampleElevationFile() {
   setLoading(true, 'Loading Windows_Measure_Test.pdf and learning representative markups...');
+  
+  if (state.serverAvailable) {
+    try {
+      const res = await fetch('/api/load-sample', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success') {
+          applyAnalysisData(data);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Server load-sample failed, falling back to demo data:', err);
+    }
+  }
+
+  // Offline / GitHub Pages fallback using demo_data.json
   try {
-    const res = await fetch('/api/load-sample', { method: 'POST' });
-    const data = await res.json();
-    if (data.status === 'success') {
+    const demoUrl = new URL('demo_data.json', window.location.href).href;
+    const res = await fetch(demoUrl);
+    if (res.ok) {
+      const data = await res.json();
       applyAnalysisData(data);
+      if (el.activeFileName) {
+        el.activeFileName.textContent = `${data.filename} (Demo Preview Mode)`;
+      }
     } else {
-      alert('Error loading sample: ' + (data.error || 'Unknown error'));
+      showServerRequiredModal('Windows_Measure_Test.pdf');
     }
   } catch (err) {
-    alert('Server request failed: ' + err.message);
+    showServerRequiredModal('Windows_Measure_Test.pdf');
   } finally {
     setLoading(false);
   }
@@ -249,16 +344,26 @@ async function loadSampleElevationFile() {
 
 function handleFileSelected(e) {
   const file = e.target.files[0];
-  if (file) uploadFile(file);
+  if (!file) return;
+  if (!state.serverAvailable) {
+    showServerRequiredModal(file.name);
+    e.target.value = ''; // Reset file input so user can try again after running server
+    return;
+  }
+  uploadFile(file);
 }
 
 function handleFileDrop(e) {
   const file = e.dataTransfer.files[0];
-  if (file && file.name.toLowerCase().endsWith('.pdf')) {
-    uploadFile(file);
-  } else {
+  if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
     alert('Please upload an architectural PDF elevation file.');
+    return;
   }
+  if (!state.serverAvailable) {
+    showServerRequiredModal(file.name);
+    return;
+  }
+  uploadFile(file);
 }
 
 async function uploadFile(file) {
@@ -423,6 +528,12 @@ function renderWindowTypesTable(types) {
 // ELEVATION SHEET CANVAS VIEWPORT
 // ----------------------------------------------------
 async function loadPagePreview(pageIdx) {
+  if (!state.serverAvailable) {
+    setCanvasLoader(false);
+    renderOfflineCanvasPlaceholder(pageIdx);
+    return;
+  }
+
   setCanvasLoader(true);
   try {
     const mode = state.hasCompleted ? 'completed' : 'original';
@@ -460,6 +571,62 @@ function resizeCanvas() {
   el.elevationCanvas.width = rect.width;
   el.elevationCanvas.height = rect.height;
   renderCanvas();
+}
+
+function renderOfflineCanvasPlaceholder(pageIdx) {
+  const cw = el.elevationCanvas.width;
+  const ch = el.elevationCanvas.height;
+  if (!cw || !ch) return;
+
+  ctx.save();
+  ctx.fillStyle = '#0F172A';
+  ctx.fillRect(0, 0, cw, ch);
+
+  // Subtle architectural grid
+  ctx.strokeStyle = '#1E293B';
+  ctx.lineWidth = 1;
+  const gridSize = 32;
+  for (let x = 0; x < cw; x += gridSize) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ch); ctx.stroke();
+  }
+  for (let y = 0; y < ch; y += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(cw, y); ctx.stroke();
+  }
+
+  // Centered Blueprint Card
+  const cardW = Math.min(cw - 40, 520);
+  const cardH = 170;
+  const cardX = (cw - cardW) / 2;
+  const cardY = (ch - cardH) / 2;
+
+  ctx.fillStyle = '#1E293B';
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 2;
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, cardW, cardH, 10);
+    ctx.fill();
+    ctx.stroke();
+  } else {
+    ctx.fillRect(cardX, cardY, cardW, cardH);
+    ctx.strokeRect(cardX, cardY, cardW, cardH);
+  }
+
+  ctx.fillStyle = '#F8FAFC';
+  ctx.font = 'bold 16px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`Elevation Sheet ${pageIdx + 1} Preview`, cw / 2, cardY + 42);
+
+  ctx.fillStyle = '#94A3B8';
+  ctx.font = '13px Inter, sans-serif';
+  ctx.fillText('Live vector linework rendering requires the local Python backend.', cw / 2, cardY + 74);
+  ctx.fillText('Double-click run_tool.bat to interactively inspect and snap markups.', cw / 2, cardY + 98);
+
+  ctx.fillStyle = '#8CBD3A';
+  ctx.font = 'bold 13px monospace';
+  ctx.fillText('Command: run_tool.bat (http://localhost:8088)', cw / 2, cardY + 134);
+
+  ctx.restore();
 }
 
 function fitCanvasView() {
@@ -703,6 +870,11 @@ function showTooltip(clientX, clientY, item) {
 // MEASUREMENT COMPLETION EXECUTION
 // ----------------------------------------------------
 async function runMeasurementCompletion() {
+  if (!state.serverAvailable) {
+    showServerRequiredModal(state.filename);
+    return;
+  }
+
   // Gather selected types
   const selectedTypes = [];
   document.querySelectorAll('.chk-type-item:checked').forEach(chk => {
