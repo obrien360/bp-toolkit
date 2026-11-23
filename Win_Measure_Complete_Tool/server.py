@@ -375,11 +375,12 @@ def run_server(port=PORT):
         print("=" * 60)
         print("Press Ctrl+C to stop the server.\n")
 
-        # Automatically open browser
-        try:
-            webbrowser.open(url)
-        except Exception:
-            pass
+        # Automatically open browser if running on local desktop (not headless container)
+        if "PORT" not in os.environ:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
 
         try:
             httpd.serve_forever()
@@ -390,6 +391,8 @@ def run_server(port=PORT):
 
 if __name__ == "__main__":
     port_to_use = PORT
-    if len(sys.argv) > 1 and sys.argv[1].isdigit():
+    if "PORT" in os.environ and os.environ["PORT"].isdigit():
+        port_to_use = int(os.environ["PORT"])
+    elif len(sys.argv) > 1 and sys.argv[1].isdigit():
         port_to_use = int(sys.argv[1])
     run_server(port_to_use)

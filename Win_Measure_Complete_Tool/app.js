@@ -117,7 +117,9 @@ const el = {
   serverModalFileName: document.getElementById('serverModalFileName'),
   btnCloseServerModal: document.getElementById('btnCloseServerModal'),
   btnDismissServerModal: document.getElementById('btnDismissServerModal'),
-  btnCopyRunCmdModal: document.getElementById('btnCopyRunCmdModal')
+  btnCopyRunCmdModal: document.getElementById('btnCopyRunCmdModal'),
+  inputBackendUrl: document.getElementById('inputBackendUrl'),
+  btnSaveBackendUrl: document.getElementById('btnSaveBackendUrl')
 };
 
 // Canvas context
@@ -230,39 +232,72 @@ function setupEventListeners() {
   if (el.btnCopyRunCmd) el.btnCopyRunCmd.addEventListener('click', copyRunToolCmd);
   if (el.btnCopyRunCmdModal) el.btnCopyRunCmdModal.addEventListener('click', copyRunToolCmd);
 
+  // Cloud backend URL configuration in settings
+  if (el.btnSaveBackendUrl && el.inputBackendUrl) {
+    el.btnSaveBackendUrl.addEventListener('click', () => {
+      const url = el.inputBackendUrl.value.trim();
+      if (url) {
+        localStorage.setItem(CLOUD_BACKEND_CONFIG.storageKey, url);
+      } else {
+        localStorage.removeItem(CLOUD_BACKEND_CONFIG.storageKey);
+      }
+      checkServerStatus();
+    });
+    el.inputBackendUrl.value = localStorage.getItem(CLOUD_BACKEND_CONFIG.storageKey) || CLOUD_BACKEND_CONFIG.defaultUrl;
+  }
+
   // Window resize
   window.addEventListener('resize', debounce(resizeCanvas, 150));
 }
 
 // ----------------------------------------------------
-// SERVER COMMUNICATION & STATUS
+// BACKEND ROUTING & SERVER COMMUNICATION
 // ----------------------------------------------------
-async function checkServerStatus() {
-  const isLocal = ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
-  if (!isLocal || window.location.protocol === 'file:') {
-    setServerStatus(false);
-    return;
+const CLOUD_BACKEND_CONFIG = {
+  defaultUrl: 'https://obrien360-win-measure.hf.space',
+  storageKey: 'ob360_win_measure_backend_url'
+};
+
+function isLocalEnvironment() {
+  return ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname) && window.location.protocol !== 'file:';
+}
+
+function getBackendUrl() {
+  if (isLocalEnvironment()) {
+    return ''; // Same-origin on local machine
   }
+  const custom = localStorage.getItem(CLOUD_BACKEND_CONFIG.storageKey);
+  return (custom || CLOUD_BACKEND_CONFIG.defaultUrl).trim().replace(/\/$/, '');
+}
+
+function apiUrl(endpoint) {
+  const base = getBackendUrl();
+  return base ? `${base}${endpoint}` : endpoint;
+}
+
+async function checkServerStatus() {
+  const isLocal = isLocalEnvironment();
+  const testUrl = apiUrl('/api/status');
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch('/api/status', { signal: controller.signal });
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(testUrl, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
-      setServerStatus(true);
+      setServerStatus(true, isLocal ? 'Local Server Connected' : 'Cloud Backend Connected');
       if (data.loaded && data.has_analysis) {
         state.filename = data.filename;
         state.pageCount = data.page_count;
         rescanLabels();
       }
     } else {
-      setServerStatus(false);
+      setServerStatus(false, isLocal ? 'Local Server Required' : 'Cloud Backend Offline');
     }
   } catch (err) {
-    setServerStatus(false);
+    setServerStatus(false, isLocal ? 'Local Server Required' : 'Cloud Backend Offline');
   }
 }
 
@@ -305,10 +340,10 @@ function copyRunToolCmd() {
 
 async function loadSampleElevationFile() {
   setLoading(true, 'Loading Windows_Measure_Test.pdf and learning representative markups...');
-  
+
   if (state.serverAvailable) {
     try {
-      const res = await fetch('/api/load-sample', { method: 'POST' });
+      const res = await fetch(apiUrl('/api/load-sample'), { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
         if (data.status === 'success') {
@@ -318,7 +353,7 @@ async function loadSampleElevationFile() {
         }
       }
     } catch (err) {
-      console.warn('Server load-sample failed, falling back to demo data:', err);
+      console.warn('Backend load-sample failed, falling back to demo data:', err);
     }
   }
 
@@ -372,7 +407,7 @@ async function uploadFile(file) {
     const reader = new FileReader();
     reader.onload = async () => {
       const base64Data = reader.result;
-      const res = await fetch('/api/upload', {
+      const res = await fetch(apiUrl('/api/upload'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -398,7 +433,7 @@ async function uploadFile(file) {
 async function rescanLabels() {
   setLoading(true, 'Analyzing elevation sheets and learning window tags from measurement centers...');
   try {
-    const res = await fetch('/api/analyze', {
+    const res = await fetch(apiUrl('/api/analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -537,7 +572,7 @@ async function loadPagePreview(pageIdx) {
   setCanvasLoader(true);
   try {
     const mode = state.hasCompleted ? 'completed' : 'original';
-    const res = await fetch(`/api/page-preview?page=${pageIdx}&mode=${mode}&zoom=1.4`);
+    const res = await fetch(apiUrl(`/api/page-preview?page=${pageIdx}&mode=${mode}&zoom=1.4`));
     const data = await res.json();
 
     if (data.data_uri) {
@@ -895,7 +930,7 @@ async function runMeasurementCompletion() {
 
   setLoading(true, 'Completing window area measurements with edge snapping and Bluebeam compatibility...');
   try {
-    const res = await fetch('/api/process', {
+    const res = await fetch(apiUrl('/api/process'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -911,6 +946,10 @@ async function runMeasurementCompletion() {
       el.metricAddedCount.textContent = data.added_count;
       el.metricTotalWindows.textContent = data.added_count + state.manualRecords.length;
       if (el.completionSuccessCard) el.completionSuccessCard.classList.remove('hidden');
+
+      // Update download links to point to backend endpoint
+      if (el.btnDownloadPDF) el.btnDownloadPDF.href = apiUrl('/api/download');
+      if (el.btnExportCSV) el.btnExportCSV.href = apiUrl('/api/export-csv');
 
       // Refresh current page viewer to show newly added markups
       loadPagePreview(state.currentPage);
