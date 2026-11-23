@@ -254,7 +254,7 @@ function setupEventListeners() {
 // BACKEND ROUTING & SERVER COMMUNICATION
 // ----------------------------------------------------
 const CLOUD_BACKEND_CONFIG = {
-  defaultUrl: 'https://obrien360-win-measure.hf.space',
+  defaultUrl: 'https://jireh360-ob360-win-measure.hf.space',
   storageKey: 'ob360_win_measure_backend_url'
 };
 
