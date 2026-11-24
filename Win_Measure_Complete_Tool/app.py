@@ -8,6 +8,9 @@ import sys
 import json
 import base64
 
+# Disable Gradio 5 Server-Side Rendering (SSR) Node.js server to avoid port 7861 conflicts
+os.environ["GRADIO_SSR_MODE"] = "False"
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -238,7 +241,7 @@ with gr.Blocks(title="O'Brien360 Window Measurement Tool API") as demo:
     gr.Markdown("This backend powers the interactive client application on GitHub Pages:")
     gr.Markdown("👉 **[Launch Window Measurement Completion Tool](https://obrien360.github.io/bp-toolkit/Win_Measure_Complete_Tool/)**")
 
-app = gr.mount_gradio_app(custom_app, demo, path="/")
+app = gr.mount_gradio_app(custom_app, demo, path="/", ssr_mode=False)
 
 if __name__ == "__main__":
     import uvicorn
