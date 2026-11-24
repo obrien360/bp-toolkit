@@ -14,6 +14,8 @@ const state = {
   manualRecords: [],
   addedAnnotations: [],
   tagSummary: [],
+  tagStatusOptions: [],
+  selectedTagStatuses: null,
   pageDimensions: [],
 
   // Viewer state
@@ -72,6 +74,7 @@ const el = {
   // Tag Summary Table
   tableTagSummary: document.getElementById('tableTagSummary'),
   tbodyTagSummary: document.getElementById('tbodyTagSummary'),
+  btnTagStatusFilter: document.getElementById('btnTagStatusFilter'),
 
   // Viewer
   btnPrevPage: document.getElementById('btnPrevPage'),
@@ -137,6 +140,8 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
+  setupTagStatusFilter();
+
   // Upload & File triggers
   if (el.btnBrowse) el.btnBrowse.addEventListener('click', () => el.fileInput.click());
   if (el.fileInput) el.fileInput.addEventListener('change', handleFileSelected);
@@ -508,7 +513,7 @@ function applyAnalysisData(data) {
     state.hasCompleted = true;
     state.tagSummary = data.tag_summary;
     state.addedAnnotations = data.completion_result?.added_annotations || [];
-    renderTagSummaryTable(data.tag_summary);
+    renderTagSummaryTable(data.tag_summary, true);
     if (el.sectionTagSummary) el.sectionTagSummary.classList.remove('hidden');
     if (el.sectionViewer) el.sectionViewer.classList.remove('hidden');
     if (el.completionSuccessCard) {
@@ -525,16 +530,34 @@ function applyAnalysisData(data) {
   el.sectionExecute.scrollIntoView({ behavior: 'smooth' });
 }
 
-function renderTagSummaryTable(items) {
+function renderTagSummaryTable(items, resetStatusFilter = false) {
   if (!el.tbodyTagSummary) return;
   el.tbodyTagSummary.innerHTML = '';
 
   if (!items || items.length === 0) {
+    state.tagStatusOptions = [];
+    if (resetStatusFilter) state.selectedTagStatuses = null;
     el.tbodyTagSummary.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--ob-text-muted);padding:24px;">No tag summary data returned</td></tr>`;
     return;
   }
 
-  items.forEach(row => {
+  const statuses = Array.from(new Set(items.map(row => row.status).filter(Boolean))).sort();
+  const optionsChanged = statuses.length !== state.tagStatusOptions.length ||
+    statuses.some((status, index) => status !== state.tagStatusOptions[index]);
+  if (resetStatusFilter || optionsChanged) {
+    state.selectedTagStatuses = null;
+  }
+  state.tagStatusOptions = statuses;
+
+  const visibleItems = items.filter(row =>
+    !state.selectedTagStatuses || state.selectedTagStatuses.has(row.status)
+  );
+  if (visibleItems.length === 0) {
+    el.tbodyTagSummary.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--ob-text-muted);padding:24px;">No rows match the selected statuses</td></tr>`;
+    return;
+  }
+
+  visibleItems.forEach(row => {
     const tr = document.createElement('tr');
 
     // tag
@@ -584,6 +607,94 @@ function renderTagSummaryTable(items) {
     tr.appendChild(tdReason);
 
     el.tbodyTagSummary.appendChild(tr);
+  });
+}
+
+function setupTagStatusFilter() {
+  if (!el.btnTagStatusFilter) return;
+
+  const popup = document.createElement('div');
+  popup.className = 'tag-status-filter-popup hidden';
+  popup.setAttribute('role', 'group');
+  popup.setAttribute('aria-label', 'Filter tag summary by status');
+  document.body.appendChild(popup);
+
+  const closePopup = () => {
+    popup.classList.add('hidden');
+    el.btnTagStatusFilter.setAttribute('aria-expanded', 'false');
+  };
+
+  const renderOptions = () => {
+    const selected = state.selectedTagStatuses || new Set(state.tagStatusOptions);
+    const actions = document.createElement('div');
+    actions.className = 'tag-status-filter-actions';
+
+    const selectAllButton = document.createElement('button');
+    selectAllButton.type = 'button';
+    selectAllButton.textContent = 'Select all';
+    selectAllButton.addEventListener('click', () => {
+      state.selectedTagStatuses = null;
+      renderTagSummaryTable(state.tagSummary);
+      renderOptions();
+    });
+
+    const deselectAllButton = document.createElement('button');
+    deselectAllButton.type = 'button';
+    deselectAllButton.textContent = 'Deselect all';
+    deselectAllButton.addEventListener('click', () => {
+      state.selectedTagStatuses = new Set();
+      renderTagSummaryTable(state.tagSummary);
+      renderOptions();
+    });
+    actions.append(selectAllButton, deselectAllButton);
+
+    const options = document.createElement('div');
+    options.className = 'tag-status-filter-options';
+    state.tagStatusOptions.forEach(status => {
+      const label = document.createElement('label');
+      label.className = 'tag-status-filter-option';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = status;
+      checkbox.checked = selected.has(status);
+      checkbox.addEventListener('change', () => {
+        const nextSelected = new Set(state.selectedTagStatuses || state.tagStatusOptions);
+        if (checkbox.checked) nextSelected.add(status);
+        else nextSelected.delete(status);
+        state.selectedTagStatuses = nextSelected.size === state.tagStatusOptions.length
+          ? null
+          : nextSelected;
+        renderTagSummaryTable(state.tagSummary);
+      });
+      label.append(checkbox, document.createTextNode(status));
+      options.appendChild(label);
+    });
+
+    popup.replaceChildren(actions, options);
+  };
+
+  const openPopup = () => {
+    renderOptions();
+    popup.classList.remove('hidden');
+    el.btnTagStatusFilter.setAttribute('aria-expanded', 'true');
+    const bounds = el.btnTagStatusFilter.getBoundingClientRect();
+    const popupBounds = popup.getBoundingClientRect();
+    const left = Math.max(8, Math.min(bounds.left, window.innerWidth - popupBounds.width - 8));
+    const top = Math.min(bounds.bottom + 4, window.innerHeight - popupBounds.height - 8);
+    popup.style.left = `${left}px`;
+    popup.style.top = `${Math.max(8, top)}px`;
+  };
+
+  el.btnTagStatusFilter.addEventListener('click', () => {
+    if (popup.classList.contains('hidden')) openPopup();
+    else closePopup();
+  });
+  popup.addEventListener('click', event => event.stopPropagation());
+  document.addEventListener('click', event => {
+    if (!popup.contains(event.target) && event.target !== el.btnTagStatusFilter) closePopup();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closePopup();
   });
 }
 
@@ -753,17 +864,6 @@ function renderCanvas() {
       ctx.strokeStyle = '#0072B2';
       ctx.lineWidth = 2.5 / state.zoom;
       ctx.strokeRect(x, y, w, h);
-
-      // Label text inside window with white halo for legibility
-      const txt = m.content || m.matched_label || 'Manual';
-      ctx.font = `bold ${Math.max(10, 12 * rasterScale)}px Inter, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineWidth = 3 / state.zoom;
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.strokeText(txt, x + w / 2, y + h / 2);
-      ctx.fillStyle = '#0072B2';
-      ctx.fillText(txt, x + w / 2, y + h / 2);
     });
   }
 
@@ -787,17 +887,6 @@ function renderCanvas() {
       ctx.strokeStyle = strokeColor;
       ctx.lineWidth = 2.5 / state.zoom;
       ctx.strokeRect(x, y, w, h);
-
-      // Centered label with white halo
-      const txt = a.area_str || a.type;
-      ctx.font = `bold ${Math.max(10, 12 * rasterScale)}px Inter, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineWidth = 3 / state.zoom;
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.strokeText(txt, x + w / 2, y + h / 2);
-      ctx.fillStyle = strokeColor;
-      ctx.fillText(txt, x + w / 2, y + h / 2);
     });
   }
 
@@ -980,7 +1069,7 @@ async function runMeasurementCompletion() {
       if (el.btnExportTagSummary) el.btnExportTagSummary.href = apiUrl('/api/export-tag-summary');
 
       // Render Tag Summary in Section 3
-      renderTagSummaryTable(state.tagSummary);
+      renderTagSummaryTable(state.tagSummary, true);
       if (el.sectionTagSummary) el.sectionTagSummary.classList.remove('hidden');
 
       // Show Section 4 (Viewer) and refresh with engine markups
@@ -1005,7 +1094,7 @@ function applyCompletedDemo() {
   el.metricTotalWindows.textContent = (state.addedCount || state.addedAnnotations.length) + state.manualRecords.length;
   if (el.completionSuccessCard) el.completionSuccessCard.classList.remove('hidden');
 
-  renderTagSummaryTable(state.tagSummary);
+  renderTagSummaryTable(state.tagSummary, true);
   if (el.sectionTagSummary) el.sectionTagSummary.classList.remove('hidden');
   if (el.sectionViewer) el.sectionViewer.classList.remove('hidden');
   renderCanvas();
