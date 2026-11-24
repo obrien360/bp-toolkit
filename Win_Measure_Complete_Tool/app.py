@@ -12,14 +12,32 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-import fitz
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
+
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 
 from engine import WindowCompletionEngine, DEFAULT_LABEL_REGEX
-import server
+
+SAMPLE_FILE = os.path.join(BASE_DIR, "Windows_Measure_Test.pdf")
+
+# In-memory session store
+SESSION = {
+    "doc_original": None,
+    "doc_completed": None,
+    "filename": "Windows_Measure_Test.pdf",
+    "pdf_bytes": None,
+    "analysis_result": None,
+    "completion_result": None,
+    "page_count": 0,
+    "page_dimensions": [],
+    "engine": WindowCompletionEngine()
+}
 
 # Create FastAPI app
 custom_app = FastAPI(title="O'Brien360 Window Measurement Tool API")
@@ -37,39 +55,39 @@ custom_app.add_middleware(
 async def get_status():
     return {
         "status": "ready",
-        "loaded": server.SESSION["doc_original"] is not None,
-        "filename": server.SESSION["filename"],
-        "page_count": server.SESSION["page_count"],
-        "has_analysis": server.SESSION["analysis_result"] is not None,
-        "has_completed": server.SESSION["doc_completed"] is not None,
-        "added_count": server.SESSION["completion_result"]["added_count"] if server.SESSION["completion_result"] else 0
+        "loaded": SESSION["doc_original"] is not None,
+        "filename": SESSION["filename"],
+        "page_count": SESSION["page_count"],
+        "has_analysis": SESSION["analysis_result"] is not None,
+        "has_completed": SESSION["doc_completed"] is not None,
+        "added_count": SESSION["completion_result"]["added_count"] if SESSION["completion_result"] else 0
     }
 
 @custom_app.post("/api/load-sample")
 async def load_sample():
-    sample_file = server.SAMPLE_FILE
+    sample_file = SAMPLE_FILE
     if not os.path.exists(sample_file):
         return JSONResponse({"error": "Sample file not found"}, status_code=404)
     with open(sample_file, "rb") as f:
         pdf_bytes = f.read()
-    server.SESSION["pdf_bytes"] = pdf_bytes
-    server.SESSION["filename"] = "Windows_Measure_Test.pdf"
+    SESSION["pdf_bytes"] = pdf_bytes
+    SESSION["filename"] = "Windows_Measure_Test.pdf"
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    server.SESSION["doc_original"] = doc
-    server.SESSION["doc_completed"] = None
-    server.SESSION["completion_result"] = None
-    server.SESSION["page_count"] = len(doc)
-    server.SESSION["page_dimensions"] = [
+    SESSION["doc_original"] = doc
+    SESSION["doc_completed"] = None
+    SESSION["completion_result"] = None
+    SESSION["page_count"] = len(doc)
+    SESSION["page_dimensions"] = [
         {"page": i + 1, "width": round(p.rect.width, 1), "height": round(p.rect.height, 1)}
         for i, p in enumerate(doc)
     ]
-    res = server.SESSION["engine"].extract_manual_measurements(doc)
-    server.SESSION["analysis_result"] = res
+    res = SESSION["engine"].extract_manual_measurements(doc)
+    SESSION["analysis_result"] = res
     return {
         "status": "success",
-        "filename": server.SESSION["filename"],
+        "filename": SESSION["filename"],
         "page_count": len(doc),
-        "page_dimensions": server.SESSION["page_dimensions"],
+        "page_dimensions": SESSION["page_dimensions"],
         "summary_types": res["summary_types"],
         "learned_types_count": len(res["rules"]),
         "manual_measurements_count": len(res["manual_records"]),
@@ -96,24 +114,24 @@ async def upload_pdf(request: Request):
     if not pdf_bytes or len(pdf_bytes) < 100:
         return JSONResponse({"error": "Invalid PDF data received"}, status_code=400)
 
-    server.SESSION["pdf_bytes"] = pdf_bytes
-    server.SESSION["filename"] = filename
+    SESSION["pdf_bytes"] = pdf_bytes
+    SESSION["filename"] = filename
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    server.SESSION["doc_original"] = doc
-    server.SESSION["doc_completed"] = None
-    server.SESSION["completion_result"] = None
-    server.SESSION["page_count"] = len(doc)
-    server.SESSION["page_dimensions"] = [
+    SESSION["doc_original"] = doc
+    SESSION["doc_completed"] = None
+    SESSION["completion_result"] = None
+    SESSION["page_count"] = len(doc)
+    SESSION["page_dimensions"] = [
         {"page": i + 1, "width": round(p.rect.width, 1), "height": round(p.rect.height, 1)}
         for i, p in enumerate(doc)
     ]
-    res = server.SESSION["engine"].extract_manual_measurements(doc)
-    server.SESSION["analysis_result"] = res
+    res = SESSION["engine"].extract_manual_measurements(doc)
+    SESSION["analysis_result"] = res
     return {
         "status": "success",
         "filename": filename,
         "page_count": len(doc),
-        "page_dimensions": server.SESSION["page_dimensions"],
+        "page_dimensions": SESSION["page_dimensions"],
         "summary_types": res["summary_types"],
         "learned_types_count": len(res["rules"]),
         "manual_measurements_count": len(res["manual_records"]),
@@ -122,12 +140,12 @@ async def upload_pdf(request: Request):
 
 @custom_app.post("/api/analyze")
 async def analyze_pdf(request: Request):
-    if server.SESSION["doc_original"] is None:
+    if SESSION["doc_original"] is None:
         return JSONResponse({"error": "No PDF loaded"}, status_code=400)
     payload = await request.json() if (await request.body()) else {}
     label_regex = payload.get("label_regex", DEFAULT_LABEL_REGEX)
-    res = server.SESSION["engine"].extract_manual_measurements(server.SESSION["doc_original"], label_regex=label_regex)
-    server.SESSION["analysis_result"] = res
+    res = SESSION["engine"].extract_manual_measurements(SESSION["doc_original"], label_regex=label_regex)
+    SESSION["analysis_result"] = res
     return {
         "status": "success",
         "summary_types": res["summary_types"],
@@ -138,7 +156,7 @@ async def analyze_pdf(request: Request):
 
 @custom_app.get("/api/page-preview")
 async def page_preview(page: int = 0, mode: str = "original", zoom: float = 1.3):
-    target_doc = server.SESSION["doc_completed"] if (mode == "completed" and server.SESSION["doc_completed"]) else server.SESSION["doc_original"]
+    target_doc = SESSION["doc_completed"] if (mode == "completed" and SESSION["doc_completed"]) else SESSION["doc_original"]
     if target_doc is None or page < 0 or page >= len(target_doc):
         return JSONResponse({"error": "Invalid page index"}, status_code=400)
     p = target_doc[page]
@@ -161,21 +179,21 @@ async def page_preview(page: int = 0, mode: str = "original", zoom: float = 1.3)
 
 @custom_app.post("/api/process")
 async def process_measurements(request: Request):
-    if server.SESSION["doc_original"] is None or server.SESSION["analysis_result"] is None:
+    if SESSION["doc_original"] is None or SESSION["analysis_result"] is None:
         return JSONResponse({"error": "No PDF loaded or analyzed"}, status_code=400)
     payload = await request.json() if (await request.body()) else {}
     selected_pages = payload.get("pages", None)
     selected_types = payload.get("types", None)
-    doc_completed = fitz.open(stream=server.SESSION["pdf_bytes"], filetype="pdf")
-    res = server.SESSION["analysis_result"]
-    comp_result = server.SESSION["engine"].complete_measurements(
+    doc_completed = fitz.open(stream=SESSION["pdf_bytes"], filetype="pdf")
+    res = SESSION["analysis_result"]
+    comp_result = SESSION["engine"].complete_measurements(
         doc=doc_completed,
         rules=res["rules"],
         page_indices=selected_pages,
         selected_types=selected_types
     )
-    server.SESSION["doc_completed"] = doc_completed
-    server.SESSION["completion_result"] = comp_result
+    SESSION["doc_completed"] = doc_completed
+    SESSION["completion_result"] = comp_result
     return {
         "status": "success",
         "added_count": comp_result["added_count"],
@@ -187,10 +205,10 @@ async def process_measurements(request: Request):
 
 @custom_app.get("/api/download")
 async def download_completed():
-    if server.SESSION["doc_completed"] is None:
+    if SESSION["doc_completed"] is None:
         return JSONResponse({"error": "No completed PDF generated"}, status_code=400)
-    pdf_bytes = server.SESSION["doc_completed"].tobytes(garbage=0, deflate=True)
-    base_name = os.path.splitext(server.SESSION["filename"])[0]
+    pdf_bytes = SESSION["doc_completed"].tobytes(garbage=0, deflate=True)
+    base_name = os.path.splitext(SESSION["filename"])[0]
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -199,14 +217,14 @@ async def download_completed():
 
 @custom_app.get("/api/export-csv")
 async def export_csv():
-    if server.SESSION["analysis_result"] is None:
+    if SESSION["analysis_result"] is None:
         return JSONResponse({"error": "No analysis data available"}, status_code=400)
-    added_counts = server.SESSION["completion_result"]["counts_by_type"] if server.SESSION["completion_result"] else {}
+    added_counts = SESSION["completion_result"]["counts_by_type"] if SESSION["completion_result"] else {}
     csv_str = WindowCompletionEngine.generate_takeoff_csv(
-        server.SESSION["analysis_result"]["summary_types"],
+        SESSION["analysis_result"]["summary_types"],
         added_counts
     )
-    base_name = os.path.splitext(server.SESSION["filename"])[0]
+    base_name = os.path.splitext(SESSION["filename"])[0]
     return Response(
         content=csv_str.encode("utf-8"),
         media_type="text/csv",
