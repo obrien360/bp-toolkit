@@ -396,13 +396,12 @@ class WindowCompletionEngine:
         return None, None
 
     @staticmethod
-    def render_page_preview_image(page, zoom=1.5, max_dim=1800):
+    def render_page_preview_image(page, zoom=1.5, max_dim=1800, annots=False):
         """
         Renders a page to high-quality JPEG base64 data URI for browser canvas display.
-        Uses annots=False so PDF annotations are NOT rendered into the raster pixels,
-        allowing the interactive HTML5 canvas overlay to render transparent or outlined markups.
+        When annots=True, renders the exact PDF annotations produced by the engine.
         """
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, annots=False)
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False, annots=annots)
         img_bytes = pix.tobytes("jpeg")
         b64 = base64.b64encode(img_bytes).decode('ascii')
         return {
@@ -693,14 +692,68 @@ class WindowCompletionEngine:
                 added_annotations.append(record)
                 rows.append(record)
 
+        # Generate Tag Summary matching the CLI output
+        alltags = collections.Counter(w[4] for pi in page_indices for w in ctx[pi]['tags'])
+        man = collections.Counter(t for t, es in examples.items() for _ in es)
+        good = collections.Counter(r['type'] for r in rows if not r.get('problem'))
+        prob = collections.Counter(r['type'] for r in rows if r.get('problem'))
+
+        tag_summary = []
+        for t in sorted(alltags):
+            total = alltags[t]
+            mm = man[t]
+            gg = good[t]
+            pp = prob[t]
+            miss = max(0, total - mm - gg - pp)
+            if t not in rules:
+                status = 'NO MANUAL EXAMPLE'
+                reason = 'type was not learned; no measurements added'
+            elif miss:
+                status = 'PARTIALLY COMPLETED'
+                reason = f'{miss} occurrence(s) had no valid candidate'
+            elif pp:
+                status = 'COMPLETE WITH REVIEW'
+                reason = f'{pp} added measurement(s) require review'
+            else:
+                status = 'COMPLETE'
+                reason = ''
+
+            tag_summary.append({
+                'tag': t,
+                'status': status,
+                'occurrences': total,
+                'manual': mm,
+                'good_added': gg,
+                'problem_added': pp,
+                'unmeasured': miss,
+                'reason': reason
+            })
+
         return {
             'added_count': len(added_annotations),
             'added_annotations': added_annotations,
             'counts_by_type': dict(per_type),
             'counts_by_page': dict(counts_by_page),
             'snapped_count': len(added_annotations),
-            'rows': rows
+            'rows': rows,
+            'tag_summary': tag_summary
         }
+
+    @staticmethod
+    def generate_tag_summary_csv(tag_summary):
+        """
+        Generates CSV tag summary string.
+        """
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(['tag', 'status', 'occurrences', 'manual', 'good_added', 'problem_added', 'unmeasured', 'reason'])
+        for item in tag_summary:
+            writer.writerow([
+                item['tag'], item['status'], item['occurrences'],
+                item['manual'], item['good_added'], item['problem_added'],
+                item['unmeasured'], item['reason']
+            ])
+        return output.getvalue()
 
     @staticmethod
     def generate_takeoff_csv(summary_types, added_counts_by_type):

@@ -174,9 +174,10 @@ async def page_preview(page: int = 0, mode: str = "original", zoom: float = 1.3)
         return JSONResponse({"error": "Invalid page index"}, status_code=400)
     p = target_doc[page]
     zoom = max(0.5, min(zoom, 2.5))
-    preview_info = WindowCompletionEngine.render_page_preview_image(p, zoom=zoom)
+    render_annots = (mode == "completed")
+    preview_info = WindowCompletionEngine.render_page_preview_image(p, zoom=zoom, annots=render_annots)
     annots_geom = []
-    for a in p.annots():
+    for a in p.annots() or []:
         rc, rect = WindowCompletionEngine._get_annot_geometry(a)
         if rc and rect:
             annots_geom.append({
@@ -213,7 +214,8 @@ async def process_measurements(request: Request):
         "counts_by_type": comp_result["counts_by_type"],
         "counts_by_page": comp_result["counts_by_page"],
         "snapped_count": comp_result["snapped_count"],
-        "added_annotations": comp_result["added_annotations"][:200]
+        "added_annotations": comp_result["added_annotations"],
+        "tag_summary": comp_result.get("tag_summary", [])
     }
 
 @custom_app.get("/api/download")
@@ -242,6 +244,20 @@ async def export_csv():
         content=csv_str.encode("utf-8"),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{base_name}_window_takeoff.csv"'}
+    )
+
+@custom_app.get("/api/export-tag-summary")
+async def export_tag_summary():
+    if SESSION["completion_result"] is None or "tag_summary" not in SESSION["completion_result"]:
+        return JSONResponse({"error": "No tag summary available. Run completion first."}, status_code=400)
+    csv_str = WindowCompletionEngine.generate_tag_summary_csv(
+        SESSION["completion_result"]["tag_summary"]
+    )
+    base_name = os.path.splitext(SESSION["filename"])[0]
+    return Response(
+        content=csv_str.encode("utf-8"),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{base_name}_tag_summary.csv"'}
     )
 
 # Visual status landing page for direct browser visits to Hugging Face

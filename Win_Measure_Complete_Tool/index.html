@@ -156,12 +156,12 @@
       </div>
     </section>
 
-    <!-- Section 2: Window Type Learning & Settings -->
-    <section class="card section-card hidden" id="sectionRules">
+    <!-- Section 2: Execute Measurement Completion -->
+    <section class="card section-card hidden" id="sectionExecute">
       <div class="card-header">
         <div>
-          <h2>2. Representative Window Type Learning</h2>
-          <p class="subtitle">Tags are dynamically read directly around the center of each manual measurement (e.g. W01, W03, SD01). No rigid regex pattern required.</p>
+          <h2>2. Execute Measurement Completion</h2>
+          <p class="subtitle">Snaps all unmeasured windows using tile-based corner matching, creates Bluebeam-compatible area annotations, and produces takeoff summaries.</p>
         </div>
         <div class="header-actions">
           <button id="btnToggleSettings" class="btn-ghost">
@@ -169,7 +169,7 @@
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
-            Snapping & Markup Settings
+            Snapping & Backend Settings
           </button>
         </div>
       </div>
@@ -205,38 +205,6 @@
             </div>
             <span class="setting-desc">Enter your deployed Hugging Face Space or Render URL to process PDFs directly from GitHub Pages.</span>
           </div>
-        </div>
-      </div>
-
-      <!-- Window Types Table (Scrollable with max height) -->
-      <div class="table-container">
-        <table class="data-table" id="tableWindowTypes">
-          <thead>
-            <tr>
-              <th width="40"><input type="checkbox" id="chkSelectAllTypes" checked></th>
-              <th>Window Tag</th>
-              <th>Manual Samples</th>
-              <th>Total on Sheets</th>
-              <th>Missing to Add</th>
-              <th>Unit Area</th>
-              <th>Dimensions (W × H)</th>
-              <th>Scale Calibration</th>
-              <th>Sheets Found</th>
-            </tr>
-          </thead>
-          <tbody id="tbodyWindowTypes">
-            <!-- Populated dynamically -->
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- Section 3: Execution & Takeoff Export (Placed BEFORE Viewer as requested) -->
-    <section class="card section-card hidden" id="sectionExecute">
-      <div class="card-header">
-        <div>
-          <h2>3. Execute Measurement Completion & Export Takeoff</h2>
-          <p class="subtitle">Snaps all unmeasured windows, applies Bluebeam-compatible area annotations, and produces window schedules.</p>
         </div>
       </div>
 
@@ -286,18 +254,57 @@
               </svg>
               Export Takeoff CSV
             </a>
+            <a id="btnExportTagSummary" href="/api/export-tag-summary" class="btn-secondary" download>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+              Export Tag Summary CSV
+            </a>
           </div>
-        </div>
         </div>
       </div>
     </section>
 
-    <!-- Section 4: Interactive Elevation Sheet Viewer (Placed AFTER Execution for Verification) -->
+    <!-- Section 3: Tag Summary -->
+    <section class="card section-card hidden" id="sectionTagSummary">
+      <div class="card-header">
+        <div>
+          <h2>3. Tag Summary</h2>
+          <p class="subtitle">Official engine output analyzing all detected elevation window tags against manual examples, auto-added windows, and problem items.</p>
+        </div>
+      </div>
+
+      <!-- Tag Summary Table -->
+      <div class="table-container">
+        <table class="data-table" id="tableTagSummary">
+          <thead>
+            <tr>
+              <th>tag</th>
+              <th>status</th>
+              <th>occurrences</th>
+              <th>manual</th>
+              <th>good_added</th>
+              <th>problem_added</th>
+              <th>unmeasured</th>
+              <th>reason</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyTagSummary">
+            <!-- Populated dynamically from engine tag summary -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Section 4: Interactive Elevation Sheet Viewer (Visual Verification) -->
     <section class="card section-card hidden" id="sectionViewer">
       <div class="card-header">
         <div>
-          <h2>4. Interactive Elevation Sheet Viewer (Visual Verification)</h2>
-          <p class="subtitle">Inspect manual representative markups (blue) and auto-completed markups (red outlines) directly over the architectural drawings.</p>
+          <h2>4. Interactive Elevation Sheet Viewer</h2>
+          <p class="subtitle">Direct engine output with verified color coding: Blue (#0072B2) for Manual Truth, Green (#009E73) for Good Added, and Orange (#D55E00) for Review Needed.</p>
         </div>
         <div class="viewer-toolbar">
           <div class="page-nav">
@@ -322,10 +329,15 @@
               <span class="pill-dot dot-manual"></span>
               Manual Truth
             </label>
-            <label class="toggle-pill active" id="pillShowCompleted">
-              <input type="checkbox" id="chkShowCompleted" checked>
-              <span class="pill-dot dot-completed"></span>
-              Auto-Completed (Outline)
+            <label class="toggle-pill active" id="pillShowGood">
+              <input type="checkbox" id="chkShowGood" checked>
+              <span class="pill-dot dot-good"></span>
+              Good Added
+            </label>
+            <label class="toggle-pill active" id="pillShowProblem">
+              <input type="checkbox" id="chkShowProblem" checked>
+              <span class="pill-dot dot-problem"></span>
+              Problem / Review
             </label>
             <button id="btnZoomFit" class="btn-ghost btn-sm" title="Fit to view">Fit View</button>
             <button id="btnZoomIn" class="btn-ghost btn-sm" title="Zoom in">+</button>

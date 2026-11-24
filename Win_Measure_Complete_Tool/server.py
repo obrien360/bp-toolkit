@@ -81,6 +81,8 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_download(query)
         elif path == "/api/export-csv":
             self.handle_export_csv()
+        elif path == "/api/export-tag-summary":
+            self.handle_export_tag_summary()
         elif path == "/" or path == "/index.html":
             self.path = "/index.html"
             super().do_GET()
@@ -231,11 +233,12 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
         zoom = float(query.get("zoom", [1.3])[0])
         zoom = max(0.5, min(zoom, 2.5))
 
-        preview_info = WindowCompletionEngine.render_page_preview_image(page, zoom=zoom)
+        render_annots = (mode == "completed")
+        preview_info = WindowCompletionEngine.render_page_preview_image(page, zoom=zoom, annots=render_annots)
 
         # Also send overlay geometry for fast interactive vector highlight on browser canvas
         annots_geom = []
-        for a in page.annots():
+        for a in page.annots() or []:
             rc, rect = WindowCompletionEngine._get_annot_geometry(a)
             if rc and rect:
                 annots_geom.append({
@@ -310,6 +313,14 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
         with open(out_csv_path, "w", encoding="utf-8") as f:
             f.write(csv_str)
 
+        out_summary_filename = f"{base_name}_tag_summary.csv"
+        out_summary_path = os.path.join(OUTPUT_DIR, out_summary_filename)
+        summary_csv_str = WindowCompletionEngine.generate_tag_summary_csv(
+            comp_result.get("tag_summary", [])
+        )
+        with open(out_summary_path, "w", encoding="utf-8") as f:
+            f.write(summary_csv_str)
+
         self.send_json({
             "status": "success",
             "added_count": comp_result["added_count"],
@@ -318,8 +329,10 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
             "snapped_count": comp_result["snapped_count"],
             "saved_pdf": out_pdf_filename,
             "saved_csv": out_csv_filename,
+            "saved_tag_summary": out_summary_filename,
             "output_dir": "output",
-            "added_annotations": comp_result["added_annotations"][:200]
+            "added_annotations": comp_result["added_annotations"],
+            "tag_summary": comp_result.get("tag_summary", [])
         })
 
     def handle_download(self, query):
@@ -352,6 +365,26 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
         csv_bytes = csv_str.encode("utf-8")
         base_name = os.path.splitext(SESSION["filename"])[0]
         out_filename = f"{base_name}_window_takeoff.csv"
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{out_filename}"')
+        self.send_header("Content-Length", str(len(csv_bytes)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(csv_bytes)
+
+    def handle_export_tag_summary(self):
+        if SESSION["completion_result"] is None or "tag_summary" not in SESSION["completion_result"]:
+            self.send_error_json("No tag summary available. Run completion first.", status=400)
+            return
+
+        csv_str = WindowCompletionEngine.generate_tag_summary_csv(
+            SESSION["completion_result"]["tag_summary"]
+        )
+        csv_bytes = csv_str.encode("utf-8")
+        base_name = os.path.splitext(SESSION["filename"])[0]
+        out_filename = f"{base_name}_tag_summary.csv"
 
         self.send_response(200)
         self.send_header("Content-Type", "text/csv; charset=utf-8")

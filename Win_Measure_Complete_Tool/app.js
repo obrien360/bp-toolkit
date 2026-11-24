@@ -13,6 +13,7 @@ const state = {
   summaryTypes: [],
   manualRecords: [],
   addedAnnotations: [],
+  tagSummary: [],
   pageDimensions: [],
 
   // Viewer state
@@ -30,10 +31,10 @@ const state = {
   startY: 0,
   hoverItem: null,
 
-  // Layer visibility
+  // Layer visibility - Engine color coding: Manual (Blue), Good (Green), Problem (Orange)
   showManual: true,
-  showCompleted: true,
-  showLabels: false,
+  showGood: true,
+  showProblem: true,
 
   // Completion metrics
   hasCompleted: false,
@@ -55,11 +56,11 @@ const el = {
   detectedTypesBadge: document.getElementById('detectedTypesBadge'),
   btnReloadFile: document.getElementById('btnReloadFile'),
 
-  // Sections
+  // Sections (Workflow: 1. Upload -> 2. Execute -> 3. Tag Summary -> 4. Viewer)
   sectionUpload: document.getElementById('sectionUpload'),
-  sectionRules: document.getElementById('sectionRules'),
-  sectionViewer: document.getElementById('sectionViewer'),
   sectionExecute: document.getElementById('sectionExecute'),
+  sectionTagSummary: document.getElementById('sectionTagSummary'),
+  sectionViewer: document.getElementById('sectionViewer'),
 
   // Settings
   btnToggleSettings: document.getElementById('btnToggleSettings'),
@@ -68,10 +69,9 @@ const el = {
   inputSearchRadius: document.getElementById('inputSearchRadius'),
   inputOverlapThreshold: document.getElementById('inputOverlapThreshold'),
 
-  // Table
-  tableWindowTypes: document.getElementById('tableWindowTypes'),
-  tbodyWindowTypes: document.getElementById('tbodyWindowTypes'),
-  chkSelectAllTypes: document.getElementById('chkSelectAllTypes'),
+  // Tag Summary Table
+  tableTagSummary: document.getElementById('tableTagSummary'),
+  tbodyTagSummary: document.getElementById('tbodyTagSummary'),
 
   // Viewer
   btnPrevPage: document.getElementById('btnPrevPage'),
@@ -88,11 +88,13 @@ const el = {
   btnZoomIn: document.getElementById('btnZoomIn'),
   btnZoomOut: document.getElementById('btnZoomOut'),
 
-  // Layer toggles
+  // Layer toggles with engine color coding
   chkShowManual: document.getElementById('chkShowManual'),
-  chkShowCompleted: document.getElementById('chkShowCompleted'),
+  chkShowGood: document.getElementById('chkShowGood'),
+  chkShowProblem: document.getElementById('chkShowProblem'),
   pillShowManual: document.getElementById('pillShowManual'),
-  pillShowCompleted: document.getElementById('pillShowCompleted'),
+  pillShowGood: document.getElementById('pillShowGood'),
+  pillShowProblem: document.getElementById('pillShowProblem'),
 
   // Execution & Export
   btnRunCompletion: document.getElementById('btnRunCompletion'),
@@ -101,6 +103,7 @@ const el = {
   metricTotalWindows: document.getElementById('metricTotalWindows'),
   btnDownloadPDF: document.getElementById('btnDownloadPDF'),
   btnExportCSV: document.getElementById('btnExportCSV'),
+  btnExportTagSummary: document.getElementById('btnExportTagSummary'),
 
   // Help Modal
   btnQuickHelp: document.getElementById('btnQuickHelp'),
@@ -190,10 +193,17 @@ function setupEventListeners() {
       renderCanvas();
     });
   }
-  if (el.chkShowCompleted) {
-    el.chkShowCompleted.addEventListener('change', e => {
-      state.showCompleted = e.target.checked;
-      if (el.pillShowCompleted) el.pillShowCompleted.classList.toggle('active', state.showCompleted);
+  if (el.chkShowGood) {
+    el.chkShowGood.addEventListener('change', e => {
+      state.showGood = e.target.checked;
+      if (el.pillShowGood) el.pillShowGood.classList.toggle('active', state.showGood);
+      renderCanvas();
+    });
+  }
+  if (el.chkShowProblem) {
+    el.chkShowProblem.addEventListener('change', e => {
+      state.showProblem = e.target.checked;
+      if (el.pillShowProblem) el.pillShowProblem.classList.toggle('active', state.showProblem);
       renderCanvas();
     });
   }
@@ -465,6 +475,7 @@ function applyAnalysisData(data) {
   state.manualRecords = data.manual_records || [];
   state.hasCompleted = false;
   state.addedAnnotations = [];
+  state.tagSummary = [];
 
   // Update File Info Card
   el.activeFileName.textContent = data.filename;
@@ -473,9 +484,14 @@ function applyAnalysisData(data) {
   el.detectedTypesBadge.textContent = `${data.learned_types_count} Window Types Learned`;
 
   el.fileInfoCard.classList.remove('hidden');
-  el.sectionRules.classList.remove('hidden');
-  el.sectionViewer.classList.remove('hidden');
-  el.sectionExecute.classList.remove('hidden');
+
+  // Workflow order: Show Section 2 (Execute Measurement Completion)
+  if (el.sectionExecute) el.sectionExecute.classList.remove('hidden');
+
+  // Hide Section 3 & 4 until user runs completion
+  if (el.sectionTagSummary) el.sectionTagSummary.classList.add('hidden');
+  if (el.sectionViewer) el.sectionViewer.classList.add('hidden');
+  if (el.completionSuccessCard) el.completionSuccessCard.classList.add('hidden');
 
   // Populate Page Dropdown
   el.selectPageDropdown.innerHTML = '';
@@ -487,75 +503,87 @@ function applyAnalysisData(data) {
   }
   el.lblTotalPages.textContent = data.page_count;
 
-  // Render Window Types Table
-  renderWindowTypesTable(data.summary_types);
+  // If sample data already includes engine tag summary, render it directly
+  if (data.tag_summary && data.tag_summary.length > 0) {
+    state.hasCompleted = true;
+    state.tagSummary = data.tag_summary;
+    state.addedAnnotations = data.completion_result?.added_annotations || [];
+    renderTagSummaryTable(data.tag_summary);
+    if (el.sectionTagSummary) el.sectionTagSummary.classList.remove('hidden');
+    if (el.sectionViewer) el.sectionViewer.classList.remove('hidden');
+    if (el.completionSuccessCard) {
+      const added = data.completion_result?.added_count || state.addedAnnotations.length;
+      el.metricAddedCount.textContent = added;
+      el.metricTotalWindows.textContent = added + state.manualRecords.length;
+      el.completionSuccessCard.classList.remove('hidden');
+    }
+    state.currentPage = 0;
+    loadPagePreview(0);
+  }
 
-  // Load first page preview
-  state.currentPage = 0;
-  loadPagePreview(0);
+  // Smooth scroll to Section 2
+  el.sectionExecute.scrollIntoView({ behavior: 'smooth' });
 }
 
-function renderWindowTypesTable(types) {
-  el.tbodyWindowTypes.innerHTML = '';
+function renderTagSummaryTable(items) {
+  if (!el.tbodyTagSummary) return;
+  el.tbodyTagSummary.innerHTML = '';
 
-  types.forEach(t => {
+  if (!items || items.length === 0) {
+    el.tbodyTagSummary.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--ob-text-muted);padding:24px;">No tag summary data returned</td></tr>`;
+    return;
+  }
+
+  items.forEach(row => {
     const tr = document.createElement('tr');
 
-    // Checkbox
-    const tdChk = document.createElement('td');
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.className = 'chk-type-item';
-    chk.dataset.type = t.type;
-    chk.checked = t.has_rule; // Default check if representative rule was learned
-    tdChk.appendChild(chk);
-    tr.appendChild(tdChk);
+    // tag
+    const tdTag = document.createElement('td');
+    tdTag.innerHTML = `<span class="type-badge">${row.tag}</span>`;
+    tr.appendChild(tdTag);
 
-    // Window Type
-    const tdType = document.createElement('td');
-    tdType.innerHTML = `<span class="type-badge">${t.type}</span>`;
-    tr.appendChild(tdType);
+    // status with colored badge
+    const tdStatus = document.createElement('td');
+    let badgeClass = 'status-badge ';
+    if (row.status === 'COMPLETE') badgeClass += 'complete';
+    else if (row.status === 'COMPLETE WITH REVIEW') badgeClass += 'complete-with-review';
+    else if (row.status === 'PARTIALLY COMPLETED') badgeClass += 'partially-completed';
+    else badgeClass += 'no-manual-example';
+    tdStatus.innerHTML = `<span class="${badgeClass}">${row.status}</span>`;
+    tr.appendChild(tdStatus);
 
-    // Manual Samples
-    const tdManual = document.createElement('td');
-    tdManual.innerHTML = t.manual_count > 0
-      ? `<span class="badge-count badge-manual">${t.manual_count} sample${t.manual_count > 1 ? 's' : ''}</span>`
-      : `<span style="color:var(--ob-text-muted)">None</span>`;
-    tr.appendChild(tdManual);
+    // occurrences
+    const tdOcc = document.createElement('td');
+    tdOcc.innerHTML = `<strong>${row.occurrences}</strong>`;
+    tr.appendChild(tdOcc);
 
-    // Total Detected
-    const tdTotal = document.createElement('td');
-    tdTotal.innerHTML = `<strong>${t.total_count}</strong>`;
-    tr.appendChild(tdTotal);
+    // manual
+    const tdMan = document.createElement('td');
+    tdMan.textContent = row.manual;
+    tr.appendChild(tdMan);
 
-    // Missing to Add
-    const tdMissing = document.createElement('td');
-    tdMissing.innerHTML = t.missing_count > 0
-      ? `<span class="badge-count badge-missing">+${t.missing_count} missing</span>`
-      : `<span style="color:var(--ob-text-muted)">Completed</span>`;
-    tr.appendChild(tdMissing);
+    // good_added
+    const tdGood = document.createElement('td');
+    tdGood.innerHTML = row.good_added > 0 ? `<strong style="color:#009E73">+${row.good_added}</strong>` : '0';
+    tr.appendChild(tdGood);
 
-    // Unit Area
-    const tdArea = document.createElement('td');
-    tdArea.innerHTML = t.area_str ? `<strong>${t.area_str}</strong>` : `<span style="color:var(--ob-text-muted)">-</span>`;
-    tr.appendChild(tdArea);
+    // problem_added
+    const tdProb = document.createElement('td');
+    tdProb.innerHTML = row.problem_added > 0 ? `<strong style="color:#D55E00">${row.problem_added}</strong>` : '0';
+    tr.appendChild(tdProb);
 
-    // Dimensions
-    const tdDim = document.createElement('td');
-    tdDim.textContent = (t.width_pt && t.height_pt) ? `${t.width_pt} pt × ${t.height_pt} pt` : '-';
-    tr.appendChild(tdDim);
+    // unmeasured
+    const tdUnm = document.createElement('td');
+    tdUnm.innerHTML = row.unmeasured > 0 ? `<span style="color:#C5221F;font-weight:600;">${row.unmeasured}</span>` : '0';
+    tr.appendChild(tdUnm);
 
-    // Scale
-    const tdScale = document.createElement('td');
-    tdScale.textContent = t.scale_str || 'Inherit';
-    tr.appendChild(tdScale);
+    // reason
+    const tdReason = document.createElement('td');
+    tdReason.style.color = row.reason ? 'var(--ob-text)' : 'var(--ob-text-muted)';
+    tdReason.textContent = row.reason || '-';
+    tr.appendChild(tdReason);
 
-    // Sheets
-    const tdSheets = document.createElement('td');
-    tdSheets.textContent = t.pages ? t.pages.join(', ') : '-';
-    tr.appendChild(tdSheets);
-
-    el.tbodyWindowTypes.appendChild(tr);
+    el.tbodyTagSummary.appendChild(tr);
   });
 }
 
@@ -712,10 +740,9 @@ function renderCanvas() {
   // Drawing annotations overlay
   const rasterScale = state.previewImage.width / state.pageRect[2];
 
-  // 1. Manual markups (Blue)
+  // 1. Manual markups (Engine Blue: #0072B2)
   if (state.showManual) {
     const pageManuals = state.manualRecords.filter(m => m.page === state.currentPage);
-    const isFill = false; // Always outline only
     pageManuals.forEach(m => {
       const r = m.rect;
       const x = r[0] * rasterScale;
@@ -723,56 +750,53 @@ function renderCanvas() {
       const w = (r[2] - r[0]) * rasterScale;
       const h = (r[3] - r[1]) * rasterScale;
 
-      if (isFill) {
-        ctx.fillStyle = 'rgba(37, 99, 235, 0.20)';
-        ctx.fillRect(x, y, w, h);
-      }
-      ctx.strokeStyle = '#2563EB';
+      ctx.strokeStyle = '#0072B2';
       ctx.lineWidth = 2.5 / state.zoom;
       ctx.strokeRect(x, y, w, h);
 
       // Label text inside window with white halo for legibility
       const txt = m.content || m.matched_label || 'Manual';
-      ctx.font = `bold ${Math.max(10, 13 * rasterScale)}px Inter, sans-serif`;
+      ctx.font = `bold ${Math.max(10, 12 * rasterScale)}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3 / state.zoom;
       ctx.strokeStyle = '#FFFFFF';
       ctx.strokeText(txt, x + w / 2, y + h / 2);
-      ctx.fillStyle = '#1D4ED8';
+      ctx.fillStyle = '#0072B2';
       ctx.fillText(txt, x + w / 2, y + h / 2);
     });
   }
 
-  // 2. Auto-Completed markups (Clean Red Outline - No Solid Blockout!)
-  if (state.showCompleted && state.hasCompleted) {
+  // 2. Auto-Completed markups matching Engine color coding:
+  // Good: #009E73 (Bluish Green)
+  // Problem / Review: #D55E00 (Vermillion / Orange)
+  if (state.hasCompleted) {
     const pageCompleted = state.addedAnnotations.filter(a => a.page === (state.currentPage + 1));
-    const isFill = false; // Always outline only
     pageCompleted.forEach(a => {
+      const isProb = Boolean(a.problem);
+      if (isProb && !state.showProblem) return;
+      if (!isProb && !state.showGood) return;
+
+      const strokeColor = isProb ? '#D55E00' : '#009E73';
       const r = a.rect;
       const x = r[0] * rasterScale;
       const y = r[1] * rasterScale;
       const w = (r[2] - r[0]) * rasterScale;
       const h = (r[3] - r[1]) * rasterScale;
 
-      if (isFill) {
-        ctx.fillStyle = 'rgba(220, 38, 38, 0.25)';
-        ctx.fillRect(x, y, w, h);
-      }
-      // Crisp outline
-      ctx.strokeStyle = '#DC2626';
+      ctx.strokeStyle = strokeColor;
       ctx.lineWidth = 2.5 / state.zoom;
       ctx.strokeRect(x, y, w, h);
 
-      // Centered area string e.g. "40 sf" with white halo
+      // Centered label with white halo
       const txt = a.area_str || a.type;
-      ctx.font = `bold ${Math.max(10, 13 * rasterScale)}px Inter, sans-serif`;
+      ctx.font = `bold ${Math.max(10, 12 * rasterScale)}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 3 / state.zoom;
       ctx.strokeStyle = '#FFFFFF';
       ctx.strokeText(txt, x + w / 2, y + h / 2);
-      ctx.fillStyle = '#DC2626';
+      ctx.fillStyle = strokeColor;
       ctx.fillText(txt, x + w / 2, y + h / 2);
     });
   }
@@ -829,11 +853,14 @@ function handleMouseMove(e) {
   // Hit-test annotations on current page
   let found = null;
   // Check completed first
-  if (state.showCompleted && state.hasCompleted) {
+  if (state.hasCompleted) {
     const pageCompleted = state.addedAnnotations.filter(a => a.page === (state.currentPage + 1));
     for (const a of pageCompleted) {
+      const isProb = Boolean(a.problem);
+      if (isProb && !state.showProblem) continue;
+      if (!isProb && !state.showGood) continue;
       if (pdfX >= a.rect[0] && pdfX <= a.rect[2] && pdfY >= a.rect[1] && pdfY <= a.rect[3]) {
-        found = { ...a, source: 'Auto-Completed' };
+        found = { ...a, source: isProb ? 'Flagged for Review' : 'Auto-Completed (Good)' };
         break;
       }
     }
@@ -884,15 +911,20 @@ function showTooltip(clientX, clientY, item) {
   const relX = clientX - rect.left + 15;
   const relY = clientY - rect.top + 15;
 
+  const isProb = Boolean(item.problem);
+  const color = item.source === 'Manual Ground Truth' ? '#0072B2' : (isProb ? '#D55E00' : '#009E73');
+
   let html = `<strong>${item.type || item.matched_label || 'Window'}</strong><br>`;
   html += `Area: <strong>${item.content || item.area_str || 'N/A'}</strong><br>`;
   if (item.width_pt && item.height_pt) {
     html += `Size: ${item.width_pt} × ${item.height_pt} pt<br>`;
   }
-  html += `Status: <span style="color:${item.source === 'Auto-Completed' ? '#F87171' : '#60A5FA'}">${item.source}</span>`;
+  html += `Status: <span style="color:${color};font-weight:600;">${item.source}</span>`;
+  if (item.review) {
+    html += `<br><span style="color:#D55E00">⚠️ ${item.review}</span>`;
+  }
   if (item.snapped) {
-    html += `<br><span style="color:#34D399">✓ Vector edge snapped</span>`;
-    html += `<br>Shift: (${item.shift[0]}, ${item.shift[1]}) pt`;
+    html += `<br><span style="color:#009E73">✓ Vector edge snapped</span>`;
   }
 
   tt.innerHTML = html;
@@ -906,18 +938,12 @@ function showTooltip(clientX, clientY, item) {
 // ----------------------------------------------------
 async function runMeasurementCompletion() {
   if (!state.serverAvailable) {
+    // If running offline demo, use precomputed data
+    if (state.tagSummary && state.tagSummary.length > 0) {
+      applyCompletedDemo();
+      return;
+    }
     showServerRequiredModal(state.filename);
-    return;
-  }
-
-  // Gather selected types
-  const selectedTypes = [];
-  document.querySelectorAll('.chk-type-item:checked').forEach(chk => {
-    selectedTypes.push(chk.dataset.type);
-  });
-
-  if (selectedTypes.length === 0) {
-    alert('Please select at least one window type in Section 2 to complete.');
     return;
   }
 
@@ -925,7 +951,7 @@ async function runMeasurementCompletion() {
     enable_snap: el.chkEnableSnap.checked,
     search_pt: parseFloat(el.inputSearchRadius.value) || 18.0,
     overlap_distance_threshold: parseFloat(el.inputOverlapThreshold.value) || 16.0,
-    types: selectedTypes,
+    types: null // Complete all learned types
   };
 
   setLoading(true, 'Completing window area measurements with edge snapping and Bluebeam compatibility...');
@@ -941,6 +967,7 @@ async function runMeasurementCompletion() {
       state.addedCount = data.added_count;
       state.snappedCount = data.snapped_count;
       state.addedAnnotations = data.added_annotations || [];
+      state.tagSummary = data.tag_summary || [];
 
       // Update success card
       el.metricAddedCount.textContent = data.added_count;
@@ -950,10 +977,18 @@ async function runMeasurementCompletion() {
       // Update download links to point to backend endpoint
       if (el.btnDownloadPDF) el.btnDownloadPDF.href = apiUrl('/api/download');
       if (el.btnExportCSV) el.btnExportCSV.href = apiUrl('/api/export-csv');
+      if (el.btnExportTagSummary) el.btnExportTagSummary.href = apiUrl('/api/export-tag-summary');
 
-      // Refresh current page viewer to show newly added markups
+      // Render Tag Summary in Section 3
+      renderTagSummaryTable(state.tagSummary);
+      if (el.sectionTagSummary) el.sectionTagSummary.classList.remove('hidden');
+
+      // Show Section 4 (Viewer) and refresh with engine markups
+      if (el.sectionViewer) el.sectionViewer.classList.remove('hidden');
       loadPagePreview(state.currentPage);
-      el.sectionViewer.scrollIntoView({ behavior: 'smooth' });
+
+      // Smooth scroll to Section 3 (Tag Summary)
+      el.sectionTagSummary.scrollIntoView({ behavior: 'smooth' });
     } else {
       alert('Completion error: ' + (data.error || 'Failed to complete measurements'));
     }
@@ -962,6 +997,19 @@ async function runMeasurementCompletion() {
   } finally {
     setLoading(false);
   }
+}
+
+function applyCompletedDemo() {
+  state.hasCompleted = true;
+  el.metricAddedCount.textContent = state.addedCount || state.addedAnnotations.length;
+  el.metricTotalWindows.textContent = (state.addedCount || state.addedAnnotations.length) + state.manualRecords.length;
+  if (el.completionSuccessCard) el.completionSuccessCard.classList.remove('hidden');
+
+  renderTagSummaryTable(state.tagSummary);
+  if (el.sectionTagSummary) el.sectionTagSummary.classList.remove('hidden');
+  if (el.sectionViewer) el.sectionViewer.classList.remove('hidden');
+  renderCanvas();
+  el.sectionTagSummary.scrollIntoView({ behavior: 'smooth' });
 }
 
 // ----------------------------------------------------
