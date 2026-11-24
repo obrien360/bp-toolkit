@@ -11,6 +11,16 @@ import base64
 # Disable Gradio 5 Server-Side Rendering (SSR) Node.js server to avoid port 7861 conflicts
 os.environ["GRADIO_SSR_MODE"] = "False"
 
+# Hugging Face ZeroGPU startup scanner requires at least one @spaces.GPU function
+try:
+    import spaces
+
+    @spaces.GPU(duration=1)
+    def _zero_gpu_keepalive():
+        pass
+except ImportError:
+    pass
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
