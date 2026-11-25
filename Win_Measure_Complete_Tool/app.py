@@ -36,8 +36,10 @@ from fastapi.middleware.cors import CORSMiddleware
 import gradio as gr
 
 from engine import WindowCompletionEngine, DEFAULT_LABEL_REGEX
+from tool1_jobs import Tool1JobManager
 
 SAMPLE_FILE = os.path.join(BASE_DIR, "Windows_Measure_Test.pdf")
+TOOL1_JOBS = Tool1JobManager()
 
 # In-memory session store
 SESSION = {
@@ -107,26 +109,7 @@ async def load_sample():
         "manual_records": res["manual_records"][:100]
     }
 
-@custom_app.post("/api/upload")
-async def upload_pdf(request: Request):
-    content_type = request.headers.get("content-type", "")
-    body = await request.body()
-    pdf_bytes = None
-    filename = "uploaded.pdf"
-
-    if "application/json" in content_type:
-        data = json.loads(body.decode("utf-8"))
-        filename = data.get("filename", "uploaded.pdf")
-        b64_data = data.get("file_base64", "")
-        if "," in b64_data:
-            b64_data = b64_data.split(",", 1)[1]
-        pdf_bytes = base64.b64decode(b64_data)
-    else:
-        pdf_bytes = body
-
-    if not pdf_bytes or len(pdf_bytes) < 100:
-        return JSONResponse({"error": "Invalid PDF data received"}, status_code=400)
-
+def _load_pdf_into_session(pdf_bytes: bytes, filename: str) -> dict:
     SESSION["pdf_bytes"] = pdf_bytes
     SESSION["filename"] = filename
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -150,6 +133,93 @@ async def upload_pdf(request: Request):
         "manual_measurements_count": len(res["manual_records"]),
         "manual_records": res["manual_records"][:100]
     }
+
+
+@custom_app.post("/api/upload")
+async def upload_pdf(request: Request):
+    content_type = request.headers.get("content-type", "")
+    body = await request.body()
+    pdf_bytes = None
+    filename = "uploaded.pdf"
+
+    if "application/json" in content_type:
+        data = json.loads(body.decode("utf-8"))
+        filename = data.get("filename", "uploaded.pdf")
+        b64_data = data.get("file_base64", "")
+        if "," in b64_data:
+            b64_data = b64_data.split(",", 1)[1]
+        pdf_bytes = base64.b64decode(b64_data)
+    else:
+        pdf_bytes = body
+
+    if not pdf_bytes or len(pdf_bytes) < 100:
+        return JSONResponse({"error": "Invalid PDF data received"}, status_code=400)
+
+    return _load_pdf_into_session(pdf_bytes, filename)
+
+
+@custom_app.post("/api/examples")
+async def start_tool1_examples(request: Request):
+    content_type = request.headers.get("content-type", "")
+    body = await request.body()
+    pdf_bytes = None
+    filename = "drawing.pdf"
+    options = {}
+
+    if "application/json" in content_type:
+        data = json.loads(body.decode("utf-8"))
+        filename = data.get("filename", "drawing.pdf")
+        b64_data = data.get("file_base64", "")
+        if "," in b64_data:
+            b64_data = b64_data.split(",", 1)[1]
+        pdf_bytes = base64.b64decode(b64_data)
+        options = {
+            "scale": data.get("scale", ""),
+            "skip_pages": data.get("skip_pages", ""),
+            "types": data.get("types", ""),
+            "exclude_types": data.get("exclude_types", ""),
+            "ignore_existing": bool(data.get("ignore_existing", False)),
+        }
+    else:
+        pdf_bytes = body
+
+    if not pdf_bytes or len(pdf_bytes) < 100:
+        return JSONResponse({"error": "Invalid PDF data received"}, status_code=400)
+
+    job_id = TOOL1_JOBS.start_job(pdf_bytes, filename, options)
+    return {"status": "started", "job_id": job_id}
+
+
+@custom_app.get("/api/examples/{job_id}/status")
+async def get_tool1_status(job_id: str):
+    status = TOOL1_JOBS.get_status(job_id)
+    if status is None:
+        return JSONResponse({"error": "Job not found or expired"}, status_code=404)
+    return status
+
+
+@custom_app.get("/api/examples/{job_id}/download/{kind}")
+async def download_tool1_file(job_id: str, kind: str):
+    if kind not in ("examples", "report"):
+        return JSONResponse({"error": "Invalid file type"}, status_code=400)
+    res = TOOL1_JOBS.read_file(job_id, kind)
+    if res is None:
+        return JSONResponse({"error": "File not found or expired"}, status_code=404)
+    file_bytes, out_name = res
+    return Response(
+        content=file_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{out_name}"'}
+    )
+
+
+@custom_app.post("/api/examples/{job_id}/use-in-tool2")
+async def use_tool1_in_tool2(job_id: str):
+    res = TOOL1_JOBS.read_file(job_id, "examples")
+    if res is None:
+        return JSONResponse({"error": "Examples PDF not found or expired"}, status_code=404)
+    pdf_bytes, out_name = res
+    return _load_pdf_into_session(pdf_bytes, out_name)
 
 @custom_app.post("/api/analyze")
 async def analyze_pdf(request: Request):

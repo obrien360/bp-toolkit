@@ -54,12 +54,180 @@
   <!-- Main Container -->
   <main class="app-container">
 
-    <!-- Section 1: File Input & Quick Demo -->
+    <!-- Step 1: Propose window examples (Tool 1) -->
+    <section class="card section-card" id="sectionTool1">
+      <div class="card-header">
+        <div>
+          <h2>Step 1: Propose window examples (Tool 1)</h2>
+          <p class="subtitle">Upload an unmeasured elevation PDF to detect window frames and draw one blue example Area measurement per window type, plus a review report.</p>
+        </div>
+        <div class="header-actions">
+          <button type="button" id="btnToggleTool1Advanced" class="btn-ghost">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+            Advanced options
+          </button>
+        </div>
+      </div>
+
+      <!-- Tool 1 Drop Zone -->
+      <div class="drop-zone" id="tool1DropZone">
+        <input type="file" id="tool1FileInput" accept=".pdf" class="file-input-hidden">
+        <div class="drop-content">
+          <div class="drop-icon">
+            <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+              <path d="M12 12v9"></path>
+              <path d="m16 16-4-4-4 4"></path>
+            </svg>
+          </div>
+          <div class="drop-text">
+            <h3>Drag & Drop Blank Elevation PDF here</h3>
+            <p>or click to browse from your computer</p>
+          </div>
+          <button type="button" id="btnTool1Browse" class="btn-primary">Browse PDF for Step 1</button>
+        </div>
+      </div>
+
+      <!-- Selected File Bar -->
+      <div id="tool1FileBar" class="file-info-card hidden">
+        <div class="file-info-main">
+          <div class="file-badge-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
+          </div>
+          <div class="file-meta">
+            <h4 id="tool1FileName">drawing.pdf</h4>
+            <div class="file-tags">
+              <span class="tag tag-pages" id="tool1FileSize">0 MB</span>
+              <span class="tag tag-types" id="tool1ScalePreview">Scale: auto-detect</span>
+            </div>
+          </div>
+        </div>
+        <div class="file-actions" style="display:flex; gap:8px; align-items:center;">
+          <button type="button" id="btnTool1ChangeFile" class="btn-ghost">Change File</button>
+          <button type="button" id="btnRunTool1" class="btn-action-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+            <span>Propose Window Examples</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsed-by-default Advanced Options -->
+      <div id="tool1AdvancedPanel" class="settings-panel hidden" style="margin-top:16px;">
+        <div class="settings-grid">
+          <div class="setting-item">
+            <label for="inputTool1Scale">Drawing Scale (--scale)</label>
+            <input type="text" id="inputTool1Scale" class="form-input" placeholder="Auto-detect (or enter e.g. 1/16, 1/8)">
+            <span class="setting-desc">Leave blank to auto-detect from view titles or existing calibration. Enter e.g. <code>1/16</code> or <code>1/8</code> to override or if no scale is found.</span>
+          </div>
+
+          <div class="setting-item">
+            <label for="inputTool1SkipPages">Skip Pages (--skip-pages)</label>
+            <input type="text" id="inputTool1SkipPages" class="form-input" placeholder="e.g. 6 or 1,5-6">
+            <span class="setting-desc">1-based page numbers or ranges to skip (SCHEDULE/LEGEND/DETAILS sheets are skipped automatically).</span>
+          </div>
+
+          <div class="setting-item">
+            <label for="inputTool1Types">Only Types (--types)</label>
+            <input type="text" id="inputTool1Types" class="form-input" placeholder="e.g. B4,D6">
+            <span class="setting-desc">Optional comma-separated window tags to propose exclusively.</span>
+          </div>
+
+          <div class="setting-item">
+            <label for="inputTool1ExcludeTypes">Exclude Types (--exclude-types)</label>
+            <input type="text" id="inputTool1ExcludeTypes" class="form-input" placeholder="e.g. W99,D1">
+            <span class="setting-desc">Optional comma-separated window tags to skip.</span>
+          </div>
+
+          <div class="setting-item">
+            <label for="chkTool1IgnoreExisting" class="checkbox-label">
+              <input type="checkbox" id="chkTool1IgnoreExisting">
+              <span>Test Mode: Ignore Existing Measurements (--ignore-existing)</span>
+            </label>
+            <span class="setting-desc">Removes existing Area measurements first and proposes every type (for QC testing on already-measured sheets).</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress / Status Display -->
+      <div id="tool1ProgressBox" class="tool1-progress-box hidden">
+        <div class="tool1-progress-header">
+          <div id="tool1Spinner" class="spinner" style="width:18px;height:18px;"></div>
+          <span id="tool1StatusText">Running Tool 1 (this typically takes 1–3 minutes)...</span>
+        </div>
+        <pre id="tool1ProgressLog" class="tool1-progress-log"></pre>
+      </div>
+
+      <!-- Error Banner -->
+      <div id="tool1ErrorBox" class="tool1-error-box hidden">
+        <strong>Tool 1 Error:</strong> <span id="tool1ErrorText"></span>
+      </div>
+
+      <!-- Results & Review Report -->
+      <div id="tool1ResultBox" class="tool1-result-box hidden">
+        <div class="completion-success-card" style="margin-top:0;">
+          <div class="success-card-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </div>
+          <div class="success-card-body">
+            <div class="success-card-title">✓ Example Measurements &amp; Review Report Ready</div>
+            <div class="success-card-stats">
+              <span id="tool1ProposedCount" class="success-stat-num">0</span>
+              <span class="success-stat-label">types proposed</span>
+              <span class="success-stat-sep">•</span>
+              <span id="tool1LowMedCount" class="success-stat-num" style="color:#D55E00;">0</span>
+              <span class="success-stat-label">Low/Medium to check first</span>
+            </div>
+          </div>
+          <div class="success-card-actions">
+            <a id="btnDownloadTool1Examples" href="#" class="btn-primary" download>Download Examples PDF</a>
+            <a id="btnDownloadTool1Report" href="#" class="btn-secondary" download>Download Review Report</a>
+            <button type="button" id="btnUseTool1InStep2" class="btn-secondary" title="Skip re-upload and load examples PDF directly into Step 2">Send to Step 2 ↓</button>
+          </div>
+        </div>
+
+        <div class="tool1-instructions">
+          <strong>Next step (Review in Bluebeam Revu):</strong>
+          Open the examples PDF in Bluebeam Revu. Check the Low and Medium confidence examples first (listed in the report). Move, resize or delete any that are wrong, and add one for any missing type. Save, then upload the reviewed PDF in Step 2 below.
+        </div>
+
+        <div class="table-container" style="margin-top:14px;">
+          <table class="data-table" id="tableTool1Report">
+            <thead>
+              <tr>
+                <th>tag</th>
+                <th>confidence</th>
+                <th>agree / checked</th>
+                <th>on sheet</th>
+                <th>width</th>
+                <th>height</th>
+                <th>area</th>
+                <th>page</th>
+                <th>note</th>
+              </tr>
+            </thead>
+            <tbody id="tbodyTool1Report"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Complete all windows (Tool 2) -->
     <section class="card section-card" id="sectionUpload">
       <div class="card-header">
         <div>
-          <h2>1. Select or Drop Architectural Elevation PDF</h2>
-          <p class="subtitle">Supports multi-page elevation sets with representative manual Bluebeam area measurements.</p>
+          <h2>Step 2: Complete all windows (Tool 2)</h2>
+          <p class="subtitle">Upload a reviewed elevation PDF containing one Bluebeam Area measurement per window type (or load the sample file).</p>
         </div>
         <div class="header-actions">
           <button id="btnLoadExample" class="btn-secondary" title="Load sample elevation file with 15 representative window types">

@@ -41,7 +41,12 @@ const state = {
   // Completion metrics
   hasCompleted: false,
   addedCount: 0,
-  snappedCount: 0
+  snappedCount: 0,
+
+  // Tool 1 (Step 1) state
+  tool1File: null,
+  tool1JobId: null,
+  tool1PollTimer: null
 };
 
 // DOM Elements
@@ -125,7 +130,38 @@ const el = {
   btnDismissServerModal: document.getElementById('btnDismissServerModal'),
   btnCopyRunCmdModal: document.getElementById('btnCopyRunCmdModal'),
   inputBackendUrl: document.getElementById('inputBackendUrl'),
-  btnSaveBackendUrl: document.getElementById('btnSaveBackendUrl')
+  btnSaveBackendUrl: document.getElementById('btnSaveBackendUrl'),
+
+  // Tool 1 (Step 1)
+  tool1DropZone: document.getElementById('tool1DropZone'),
+  tool1FileInput: document.getElementById('tool1FileInput'),
+  btnTool1Browse: document.getElementById('btnTool1Browse'),
+  tool1FileBar: document.getElementById('tool1FileBar'),
+  tool1FileName: document.getElementById('tool1FileName'),
+  tool1FileSize: document.getElementById('tool1FileSize'),
+  tool1ScalePreview: document.getElementById('tool1ScalePreview'),
+  btnTool1ChangeFile: document.getElementById('btnTool1ChangeFile'),
+  btnRunTool1: document.getElementById('btnRunTool1'),
+  btnToggleTool1Advanced: document.getElementById('btnToggleTool1Advanced'),
+  tool1AdvancedPanel: document.getElementById('tool1AdvancedPanel'),
+  inputTool1Scale: document.getElementById('inputTool1Scale'),
+  inputTool1SkipPages: document.getElementById('inputTool1SkipPages'),
+  inputTool1Types: document.getElementById('inputTool1Types'),
+  inputTool1ExcludeTypes: document.getElementById('inputTool1ExcludeTypes'),
+  chkTool1IgnoreExisting: document.getElementById('chkTool1IgnoreExisting'),
+  tool1ProgressBox: document.getElementById('tool1ProgressBox'),
+  tool1Spinner: document.getElementById('tool1Spinner'),
+  tool1StatusText: document.getElementById('tool1StatusText'),
+  tool1ProgressLog: document.getElementById('tool1ProgressLog'),
+  tool1ErrorBox: document.getElementById('tool1ErrorBox'),
+  tool1ErrorText: document.getElementById('tool1ErrorText'),
+  tool1ResultBox: document.getElementById('tool1ResultBox'),
+  tool1ProposedCount: document.getElementById('tool1ProposedCount'),
+  tool1LowMedCount: document.getElementById('tool1LowMedCount'),
+  btnDownloadTool1Examples: document.getElementById('btnDownloadTool1Examples'),
+  btnDownloadTool1Report: document.getElementById('btnDownloadTool1Report'),
+  btnUseTool1InStep2: document.getElementById('btnUseTool1InStep2'),
+  tbodyTool1Report: document.getElementById('tbodyTool1Report')
 };
 
 // Canvas context
@@ -263,6 +299,51 @@ function setupEventListeners() {
 
   // Window resize
   window.addEventListener('resize', debounce(resizeCanvas, 150));
+
+  // Tool 1 (Step 1) events
+  if (el.btnTool1Browse) el.btnTool1Browse.addEventListener('click', () => el.tool1FileInput.click());
+  if (el.btnTool1ChangeFile) el.btnTool1ChangeFile.addEventListener('click', () => el.tool1FileInput.click());
+  if (el.tool1FileInput) {
+    el.tool1FileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) selectTool1File(file);
+    });
+  }
+  if (el.tool1DropZone) {
+    ['dragenter', 'dragover'].forEach(ev => {
+      el.tool1DropZone.addEventListener(ev, e => {
+        e.preventDefault();
+        el.tool1DropZone.classList.add('dragover');
+      });
+    });
+    ['dragleave', 'drop'].forEach(ev => {
+      el.tool1DropZone.addEventListener(ev, e => {
+        e.preventDefault();
+        el.tool1DropZone.classList.remove('dragover');
+      });
+    });
+    el.tool1DropZone.addEventListener('drop', e => {
+      const file = e.dataTransfer.files[0];
+      if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
+        alert('Please drop a PDF file.');
+        return;
+      }
+      selectTool1File(file);
+    });
+  }
+  if (el.btnToggleTool1Advanced && el.tool1AdvancedPanel) {
+    el.btnToggleTool1Advanced.addEventListener('click', () => {
+      el.tool1AdvancedPanel.classList.toggle('hidden');
+    });
+  }
+  if (el.inputTool1Scale && el.tool1ScalePreview) {
+    el.inputTool1Scale.addEventListener('input', () => {
+      const val = el.inputTool1Scale.value.trim();
+      el.tool1ScalePreview.textContent = val ? `Scale: ${val}` : 'Scale: auto-detect';
+    });
+  }
+  if (el.btnRunTool1) el.btnRunTool1.addEventListener('click', runTool1);
+  if (el.btnUseTool1InStep2) el.btnUseTool1InStep2.addEventListener('click', sendTool1ToStep2);
 }
 
 // ----------------------------------------------------
@@ -1130,4 +1211,181 @@ function debounce(fn, ms) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), ms);
   };
+}
+
+// ----------------------------------------------------
+// TOOL 1 (STEP 1: PROPOSE WINDOW EXAMPLES)
+// ----------------------------------------------------
+function selectTool1File(file) {
+  if (!state.serverAvailable) {
+    showServerRequiredModal(file.name);
+    return;
+  }
+  state.tool1File = file;
+  if (el.tool1FileName) el.tool1FileName.textContent = file.name;
+  if (el.tool1FileSize) el.tool1FileSize.textContent = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+  if (el.tool1DropZone) el.tool1DropZone.classList.add('hidden');
+  if (el.tool1FileBar) el.tool1FileBar.classList.remove('hidden');
+  if (el.tool1ErrorBox) el.tool1ErrorBox.classList.add('hidden');
+  if (el.tool1ResultBox) el.tool1ResultBox.classList.add('hidden');
+  if (el.tool1ProgressBox) el.tool1ProgressBox.classList.add('hidden');
+}
+
+async function runTool1() {
+  if (!state.serverAvailable) {
+    showServerRequiredModal(state.tool1File?.name);
+    return;
+  }
+  if (!state.tool1File) {
+    alert('Please select a PDF file for Step 1 first.');
+    return;
+  }
+
+  if (state.tool1PollTimer) {
+    clearInterval(state.tool1PollTimer);
+    state.tool1PollTimer = null;
+  }
+
+  el.btnRunTool1.disabled = true;
+  if (el.tool1ErrorBox) el.tool1ErrorBox.classList.add('hidden');
+  if (el.tool1ResultBox) el.tool1ResultBox.classList.add('hidden');
+  if (el.tool1ProgressBox) el.tool1ProgressBox.classList.remove('hidden');
+  if (el.tool1Spinner) el.tool1Spinner.classList.remove('hidden');
+  if (el.tool1StatusText) el.tool1StatusText.textContent = 'Uploading PDF and starting Tool 1...';
+  if (el.tool1ProgressLog) el.tool1ProgressLog.textContent = '';
+
+  try {
+    const base64Data = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Failed to read selected PDF file'));
+      reader.readAsDataURL(state.tool1File);
+    });
+
+    const payload = {
+      filename: state.tool1File.name,
+      file_base64: base64Data,
+      scale: el.inputTool1Scale?.value.trim() || '',
+      skip_pages: el.inputTool1SkipPages?.value.trim() || '',
+      types: el.inputTool1Types?.value.trim() || '',
+      exclude_types: el.inputTool1ExcludeTypes?.value.trim() || '',
+      ignore_existing: Boolean(el.chkTool1IgnoreExisting?.checked)
+    };
+
+    const res = await fetch(apiUrl('/api/examples'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!res.ok || !data.job_id) {
+      throw new Error(data.error || 'Failed to start Tool 1');
+    }
+
+    state.tool1JobId = data.job_id;
+    if (el.tool1StatusText) el.tool1StatusText.textContent = 'Running Tool 1 (typically 1–3 minutes)...';
+    pollTool1Status(data.job_id);
+    state.tool1PollTimer = setInterval(() => pollTool1Status(data.job_id), 2500);
+  } catch (err) {
+    showTool1Error(err.message);
+  }
+}
+
+async function pollTool1Status(jobId) {
+  try {
+    const res = await fetch(apiUrl(`/api/examples/${jobId}/status`));
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to check Tool 1 status');
+    }
+
+    if (el.tool1ProgressLog && Array.isArray(data.progress)) {
+      el.tool1ProgressLog.textContent = data.progress.join('\n');
+      el.tool1ProgressLog.scrollTop = el.tool1ProgressLog.scrollHeight;
+    }
+    if (el.tool1StatusText && data.last_line) {
+      el.tool1StatusText.textContent = data.last_line;
+    }
+
+    if (data.status === 'done') {
+      clearInterval(state.tool1PollTimer);
+      state.tool1PollTimer = null;
+      el.btnRunTool1.disabled = false;
+      if (el.tool1Spinner) el.tool1Spinner.classList.add('hidden');
+      if (el.tool1StatusText) el.tool1StatusText.textContent = 'Completed';
+      renderTool1Results(jobId, data);
+    } else if (data.status === 'error') {
+      clearInterval(state.tool1PollTimer);
+      state.tool1PollTimer = null;
+      showTool1Error(data.error || 'Tool 1 failed');
+    }
+  } catch (err) {
+    clearInterval(state.tool1PollTimer);
+    state.tool1PollTimer = null;
+    showTool1Error(err.message);
+  }
+}
+
+function showTool1Error(msg) {
+  el.btnRunTool1.disabled = false;
+  if (el.tool1Spinner) el.tool1Spinner.classList.add('hidden');
+  if (el.tool1StatusText) el.tool1StatusText.textContent = 'Failed';
+  if (el.tool1ErrorText) el.tool1ErrorText.textContent = msg;
+  if (el.tool1ErrorBox) el.tool1ErrorBox.classList.remove('hidden');
+}
+
+function renderTool1Results(jobId, data) {
+  const rows = data.report_rows || [];
+  const proposed = rows.filter(r => r.confidence !== 'not proposed');
+  const lowMed = proposed.filter(r => r.confidence === 'Low' || r.confidence === 'Medium');
+
+  if (el.tool1ProposedCount) el.tool1ProposedCount.textContent = proposed.length;
+  if (el.tool1LowMedCount) el.tool1LowMedCount.textContent = lowMed.length;
+  if (el.btnDownloadTool1Examples) el.btnDownloadTool1Examples.href = apiUrl(`/api/examples/${jobId}/download/examples`);
+  if (el.btnDownloadTool1Report) el.btnDownloadTool1Report.href = apiUrl(`/api/examples/${jobId}/download/report`);
+
+  if (el.tbodyTool1Report) {
+    el.tbodyTool1Report.innerHTML = '';
+    if (rows.length === 0) {
+      el.tbodyTool1Report.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--ob-text-muted);padding:16px;">No report rows found</td></tr>';
+    } else {
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        const conf = (r.confidence || '').toLowerCase();
+        const badgeCls = conf === 'high' ? 'high' : (conf === 'medium' ? 'medium' : (conf === 'low' ? 'low' : 'skipped'));
+        const agreeTxt = r.agree && r.checked ? `${r.agree}/${r.checked}` : '-';
+        tr.innerHTML = `
+          <td><span class="type-badge">${r.tag || ''}</span></td>
+          <td><span class="conf-badge ${badgeCls}">${r.confidence || ''}</span></td>
+          <td>${agreeTxt}</td>
+          <td>${r.on_sheet || '-'}</td>
+          <td>${r.width || '-'}</td>
+          <td>${r.height || '-'}</td>
+          <td>${r.area || '-'}</td>
+          <td>${r.page || '-'}</td>
+          <td>${r.note || '-'}</td>
+        `;
+        el.tbodyTool1Report.appendChild(tr);
+      });
+    }
+  }
+
+  if (el.tool1ResultBox) el.tool1ResultBox.classList.remove('hidden');
+}
+
+async function sendTool1ToStep2() {
+  if (!state.tool1JobId) return;
+  if (el.btnUseTool1InStep2) el.btnUseTool1InStep2.disabled = true;
+  try {
+    const res = await fetch(apiUrl(`/api/examples/${state.tool1JobId}/use-in-tool2`), { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok || data.status !== 'success') {
+      throw new Error(data.error || 'Failed to load examples PDF into Step 2');
+    }
+    applyAnalysisData(data);
+  } catch (err) {
+    alert('Could not load examples PDF into Step 2: ' + err.message);
+  } finally {
+    if (el.btnUseTool1InStep2) el.btnUseTool1InStep2.disabled = false;
+  }
 }

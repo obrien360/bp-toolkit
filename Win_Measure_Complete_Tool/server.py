@@ -21,12 +21,14 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from engine import WindowCompletionEngine, DEFAULT_LABEL_REGEX
+from tool1_jobs import Tool1JobManager
 
 PORT = 8088
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 SAMPLE_FILE = os.path.join(BASE_DIR, "Windows_Measure_Test.pdf")
+TOOL1_JOBS = Tool1JobManager()
 
 # In-memory session store
 SESSION = {
@@ -83,6 +85,12 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
             self.handle_export_csv()
         elif path == "/api/export-tag-summary":
             self.handle_export_tag_summary()
+        elif re.match(r"^/api/examples/([A-Za-z0-9]+)/status$", path):
+            job_id = path.split("/")[3]
+            self.handle_tool1_status(job_id)
+        elif re.match(r"^/api/examples/([A-Za-z0-9]+)/download/(examples|report)$", path):
+            parts = path.split("/")
+            self.handle_tool1_download(parts[3], parts[5])
         elif path == "/" or path == "/index.html":
             self.path = "/index.html"
             super().do_GET()
@@ -101,6 +109,11 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
                 self.handle_load_sample()
             elif path == "/api/upload":
                 self.handle_upload(body)
+            elif path == "/api/examples":
+                self.handle_tool1_start(body)
+            elif re.match(r"^/api/examples/([A-Za-z0-9]+)/use-in-tool2$", path):
+                job_id = path.split("/")[3]
+                self.handle_tool1_use_in_tool2(job_id)
             elif path == "/api/analyze":
                 payload = json.loads(body.decode("utf-8")) if body else {}
                 self.handle_analyze(payload)
@@ -374,6 +387,67 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(csv_bytes)
 
+    def handle_tool1_start(self, body):
+        content_type = self.headers.get("Content-Type", "")
+        pdf_bytes = None
+        filename = "drawing.pdf"
+        options = {}
+
+        if "application/json" in content_type:
+            data = json.loads(body.decode("utf-8"))
+            filename = data.get("filename", "drawing.pdf")
+            b64_data = data.get("file_base64", "")
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+            pdf_bytes = base64.b64decode(b64_data)
+            options = {
+                "scale": data.get("scale", ""),
+                "skip_pages": data.get("skip_pages", ""),
+                "types": data.get("types", ""),
+                "exclude_types": data.get("exclude_types", ""),
+                "ignore_existing": bool(data.get("ignore_existing", False)),
+            }
+        else:
+            pdf_bytes = body
+
+        if not pdf_bytes or len(pdf_bytes) < 100:
+            self.send_error_json("No valid PDF data received", status=400)
+            return
+
+        job_id = TOOL1_JOBS.start_job(pdf_bytes, filename, options)
+        self.send_json({"status": "started", "job_id": job_id})
+
+    def handle_tool1_status(self, job_id):
+        status = TOOL1_JOBS.get_status(job_id)
+        if status is None:
+            self.send_error_json("Job not found or expired", status=404)
+            return
+        self.send_json(status)
+
+    def handle_tool1_download(self, job_id, kind):
+        res = TOOL1_JOBS.read_file(job_id, kind)
+        if res is None:
+            self.send_error_json("File not found or expired", status=404)
+            return
+        file_bytes, out_name = res
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f'attachment; filename="{out_name}"')
+        self.send_header("Content-Length", str(len(file_bytes)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(file_bytes)
+
+    def handle_tool1_use_in_tool2(self, job_id):
+        res = TOOL1_JOBS.read_file(job_id, "examples")
+        if res is None:
+            self.send_error_json("Examples PDF not found or expired", status=404)
+            return
+        pdf_bytes, out_name = res
+        SESSION["pdf_bytes"] = pdf_bytes
+        SESSION["filename"] = out_name
+        self._load_and_analyze(pdf_bytes, DEFAULT_LABEL_REGEX)
+
     def handle_export_tag_summary(self):
         if SESSION["completion_result"] is None or "tag_summary" not in SESSION["completion_result"]:
             self.send_error_json("No tag summary available. Run completion first.", status=400)
@@ -393,6 +467,67 @@ class WinMeasureHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(csv_bytes)
+
+    def handle_tool1_start(self, body):
+        content_type = self.headers.get("Content-Type", "")
+        pdf_bytes = None
+        filename = "drawing.pdf"
+        options = {}
+
+        if "application/json" in content_type:
+            data = json.loads(body.decode("utf-8"))
+            filename = data.get("filename", "drawing.pdf")
+            b64_data = data.get("file_base64", "")
+            if "," in b64_data:
+                b64_data = b64_data.split(",", 1)[1]
+            pdf_bytes = base64.b64decode(b64_data)
+            options = {
+                "scale": data.get("scale", ""),
+                "skip_pages": data.get("skip_pages", ""),
+                "types": data.get("types", ""),
+                "exclude_types": data.get("exclude_types", ""),
+                "ignore_existing": bool(data.get("ignore_existing", False)),
+            }
+        else:
+            pdf_bytes = body
+
+        if not pdf_bytes or len(pdf_bytes) < 100:
+            self.send_error_json("No valid PDF data received", status=400)
+            return
+
+        job_id = TOOL1_JOBS.start_job(pdf_bytes, filename, options)
+        self.send_json({"status": "started", "job_id": job_id})
+
+    def handle_tool1_status(self, job_id):
+        status = TOOL1_JOBS.get_status(job_id)
+        if status is None:
+            self.send_error_json("Job not found or expired", status=404)
+            return
+        self.send_json(status)
+
+    def handle_tool1_download(self, job_id, kind):
+        res = TOOL1_JOBS.read_file(job_id, kind)
+        if res is None:
+            self.send_error_json("File not found or expired", status=404)
+            return
+        file_bytes, out_name = res
+        self.send_response(200)
+        self.send_header("Content-Type", "application/pdf")
+        self.send_header("Content-Disposition", f'attachment; filename="{out_name}"')
+        self.send_header("Content-Length", str(len(file_bytes)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(file_bytes)
+
+    def handle_tool1_use_in_tool2(self, job_id):
+        res = TOOL1_JOBS.read_file(job_id, "examples")
+        if res is None:
+            self.send_error_json("Examples PDF not found or expired", status=404)
+            return
+        pdf_bytes, out_name = res
+        SESSION["pdf_bytes"] = pdf_bytes
+        SESSION["filename"] = out_name
+        self._load_and_analyze(pdf_bytes, DEFAULT_LABEL_REGEX)
 
 
 def run_server(port=PORT):

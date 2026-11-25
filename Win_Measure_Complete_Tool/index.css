@@ -1197,3 +1197,90 @@ button {
 .hidden {
   display: none !important;
 }
+
+/* Tool 1 (Step 1) Progress, Error & Report */
+.tool1-progress-box {
+  margin-top: 16px;
+  background: #F8FAFC;
+  border: 1px solid var(--ob-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.tool1-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--ob-dark);
+  margin-bottom: 8px;
+}
+
+.tool1-progress-log {
+  background: #0F172A;
+  color: #E2E8F0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border-radius: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool1-error-box {
+  margin-top: 16px;
+  background: #FEF2F2;
+  border: 1.5px solid #FCA5A5;
+  color: #991B1B;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.tool1-result-box {
+  margin-top: 16px;
+}
+
+.tool1-instructions {
+  margin-top: 12px;
+  background: #EFF6FF;
+  border: 1px solid #BFDBFE;
+  color: #1E3A8A;
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.conf-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.conf-badge.high {
+  background: #DCFCE7;
+  color: #166534;
+}
+
+.conf-badge.medium {
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+.conf-badge.low {
+  background: #FEE2E2;
+  color: #991B1B;
+}
+
+.conf-badge.skipped {
+  background: #F1F5F9;
+  color: #475569;
+}
