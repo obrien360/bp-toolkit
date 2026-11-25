@@ -88,6 +88,7 @@ class Tool1JobManager:
             "progress": [],
             "error": None,
             "report_rows": [],
+            "closeup_pages": [],
             "created_at": now,
             "updated_at": now,
         }
@@ -133,9 +134,11 @@ class Tool1JobManager:
 
             if rc == 0 and os.path.isfile(job["examples_path"]):
                 report_rows = self._extract_report_rows(job["report_path"])
+                closeup_pages = self._extract_closeup_pages(job["report_path"])
                 with self._lock:
                     if job_id in self._jobs:
                         self._jobs[job_id]["report_rows"] = report_rows
+                        self._jobs[job_id]["closeup_pages"] = closeup_pages
                         self._jobs[job_id]["status"] = "done"
                         self._jobs[job_id]["updated_at"] = time.time()
             else:
@@ -166,6 +169,24 @@ class Tool1JobManager:
         except Exception:
             return []
 
+    @staticmethod
+    def _extract_closeup_pages(report_path: str) -> list[str]:
+        if not os.path.isfile(report_path):
+            return []
+        try:
+            import base64
+            doc = fitz.open(report_path)
+            images = []
+            for page in doc:
+                if "Close-ups" in page.get_text("text"):
+                    pix = page.get_pixmap(matrix=fitz.Matrix(1.6, 1.6), alpha=False)
+                    b64 = base64.b64encode(pix.tobytes("png")).decode("ascii")
+                    images.append(f"data:image/png;base64,{b64}")
+            doc.close()
+            return images
+        except Exception:
+            return []
+
     def get_status(self, job_id: str) -> dict | None:
         self.cleanup_expired()
         with self._lock:
@@ -182,6 +203,7 @@ class Tool1JobManager:
                 "has_examples": os.path.isfile(job["examples_path"]),
                 "has_report": os.path.isfile(job["report_path"]),
                 "report_rows": list(job["report_rows"]),
+                "closeup_pages": list(job["closeup_pages"]),
             }
 
     def read_file(self, job_id: str, kind: str) -> tuple[bytes, str] | None:

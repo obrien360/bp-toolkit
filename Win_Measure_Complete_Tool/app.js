@@ -46,7 +46,9 @@ const state = {
   // Tool 1 (Step 1) state
   tool1File: null,
   tool1JobId: null,
-  tool1PollTimer: null
+  tool1PollTimer: null,
+  tool1CloseupPages: [],
+  tool1CloseupIndex: 0
 };
 
 // DOM Elements
@@ -55,7 +57,6 @@ const el = {
   dropZone: document.getElementById('dropZone'),
   fileInput: document.getElementById('fileInput'),
   btnBrowse: document.getElementById('btnBrowse'),
-  btnLoadExample: document.getElementById('btnLoadExample'),
   fileInfoCard: document.getElementById('fileInfoCard'),
   activeFileName: document.getElementById('activeFileName'),
   detectedPagesBadge: document.getElementById('detectedPagesBadge'),
@@ -63,9 +64,8 @@ const el = {
   detectedTypesBadge: document.getElementById('detectedTypesBadge'),
   btnReloadFile: document.getElementById('btnReloadFile'),
 
-  // Sections (Workflow: 1. Upload -> 2. Execute -> 3. Tag Summary -> 4. Viewer)
+  // Sections (Workflow: Step 1 -> Step 2 -> Tag Summary -> Viewer)
   sectionUpload: document.getElementById('sectionUpload'),
-  sectionExecute: document.getElementById('sectionExecute'),
   sectionTagSummary: document.getElementById('sectionTagSummary'),
   sectionViewer: document.getElementById('sectionViewer'),
 
@@ -106,6 +106,11 @@ const el = {
 
   // Execution & Export
   btnRunCompletion: document.getElementById('btnRunCompletion'),
+  tool2ProgressBox: document.getElementById('tool2ProgressBox'),
+  tool2Spinner: document.getElementById('tool2Spinner'),
+  tool2StatusText: document.getElementById('tool2StatusText'),
+  tool2ErrorBox: document.getElementById('tool2ErrorBox'),
+  tool2ErrorText: document.getElementById('tool2ErrorText'),
   completionSuccessCard: document.getElementById('completionSuccessCard'),
   metricAddedCount: document.getElementById('metricAddedCount'),
   metricTotalWindows: document.getElementById('metricTotalWindows'),
@@ -161,7 +166,12 @@ const el = {
   btnDownloadTool1Examples: document.getElementById('btnDownloadTool1Examples'),
   btnDownloadTool1Report: document.getElementById('btnDownloadTool1Report'),
   btnUseTool1InStep2: document.getElementById('btnUseTool1InStep2'),
-  tbodyTool1Report: document.getElementById('tbodyTool1Report')
+  tool1CloseupsHeader: document.getElementById('tool1CloseupsHeader'),
+  btnTool1PrevCloseup: document.getElementById('btnTool1PrevCloseup'),
+  btnTool1NextCloseup: document.getElementById('btnTool1NextCloseup'),
+  selectTool1CloseupPage: document.getElementById('selectTool1CloseupPage'),
+  lblTool1CloseupTotal: document.getElementById('lblTool1CloseupTotal'),
+  tool1CloseupsContainer: document.getElementById('tool1CloseupsContainer')
 };
 
 // Canvas context
@@ -181,8 +191,7 @@ function setupEventListeners() {
   // Upload & File triggers
   if (el.btnBrowse) el.btnBrowse.addEventListener('click', () => el.fileInput.click());
   if (el.fileInput) el.fileInput.addEventListener('change', handleFileSelected);
-  if (el.btnLoadExample) el.btnLoadExample.addEventListener('click', loadSampleElevationFile);
-  if (el.btnReloadFile) el.btnReloadFile.addEventListener('click', () => el.fileInput.click());
+  if (el.btnReloadFile) el.btnReloadFile.addEventListener('click', resetStep2Selection);
 
   // Drag & Drop
   if (el.dropZone) {
@@ -302,7 +311,7 @@ function setupEventListeners() {
 
   // Tool 1 (Step 1) events
   if (el.btnTool1Browse) el.btnTool1Browse.addEventListener('click', () => el.tool1FileInput.click());
-  if (el.btnTool1ChangeFile) el.btnTool1ChangeFile.addEventListener('click', () => el.tool1FileInput.click());
+  if (el.btnTool1ChangeFile) el.btnTool1ChangeFile.addEventListener('click', resetStep1Selection);
   if (el.tool1FileInput) {
     el.tool1FileInput.addEventListener('change', e => {
       const file = e.target.files[0];
@@ -344,6 +353,9 @@ function setupEventListeners() {
   }
   if (el.btnRunTool1) el.btnRunTool1.addEventListener('click', runTool1);
   if (el.btnUseTool1InStep2) el.btnUseTool1InStep2.addEventListener('click', sendTool1ToStep2);
+  if (el.btnTool1PrevCloseup) el.btnTool1PrevCloseup.addEventListener('click', () => showTool1CloseupPage(state.tool1CloseupIndex - 1));
+  if (el.btnTool1NextCloseup) el.btnTool1NextCloseup.addEventListener('click', () => showTool1CloseupPage(state.tool1CloseupIndex + 1));
+  if (el.selectTool1CloseupPage) el.selectTool1CloseupPage.addEventListener('change', e => showTool1CloseupPage(parseInt(e.target.value, 10)));
 }
 
 // ----------------------------------------------------
@@ -382,13 +394,8 @@ async function checkServerStatus() {
     clearTimeout(timeoutId);
 
     if (res.ok) {
-      const data = await res.json();
+      await res.json();
       setServerStatus(true, isLocal ? 'Local Server Connected' : 'Cloud Backend Connected');
-      if (data.loaded && data.has_analysis) {
-        state.filename = data.filename;
-        state.pageCount = data.page_count;
-        rescanLabels();
-      }
     } else {
       setServerStatus(false, isLocal ? 'Local Server Required' : 'Cloud Backend Offline');
     }
@@ -527,7 +534,6 @@ async function uploadFile(file) {
 }
 
 async function rescanLabels() {
-  setLoading(true, 'Analyzing elevation sheets and learning window tags from measurement centers...');
   try {
     const res = await fetch(apiUrl('/api/analyze'), {
       method: 'POST',
@@ -536,17 +542,16 @@ async function rescanLabels() {
     });
     const data = await res.json();
     if (data.status === 'success') {
-      state.summaryTypes = data.summary_types;
-      state.manualRecords = data.manual_records;
-      renderWindowTypesTable(data.summary_types);
-      loadPagePreview(state.currentPage);
+      applyAnalysisData({
+        ...data,
+        filename: state.filename || 'loaded.pdf',
+        page_count: state.pageCount || 0
+      });
     } else {
-      alert('Error scanning labels: ' + (data.error || 'Unknown error'));
+      console.warn('Error scanning labels:', data.error || 'Unknown error');
     }
   } catch (err) {
-    alert('Error connecting to server: ' + err.message);
-  } finally {
-    setLoading(false);
+    console.warn('Error connecting to server:', err.message);
   }
 }
 
@@ -556,25 +561,25 @@ async function rescanLabels() {
 function applyAnalysisData(data) {
   state.filename = data.filename;
   state.pageCount = data.page_count;
-  state.pageDimensions = data.page_dimensions || [];
+  state.pageDimensions = data.page_dimensions || state.pageDimensions || [];
   state.summaryTypes = data.summary_types || [];
   state.manualRecords = data.manual_records || [];
   state.hasCompleted = false;
   state.addedAnnotations = [];
   state.tagSummary = [];
 
-  // Update File Info Card
-  el.activeFileName.textContent = data.filename;
-  el.detectedPagesBadge.textContent = `${data.page_count} Elevation Pages`;
-  el.detectedManualBadge.textContent = `${data.manual_measurements_count} Manual Measurements`;
-  el.detectedTypesBadge.textContent = `${data.learned_types_count} Window Types Learned`;
+  // Update File Info Card & minimize Drop Zone (matches Step 1)
+  if (el.activeFileName) el.activeFileName.textContent = data.filename;
+  if (el.detectedPagesBadge) el.detectedPagesBadge.textContent = `${data.page_count} Elevation Pages`;
+  if (el.detectedManualBadge) el.detectedManualBadge.textContent = `${data.manual_measurements_count} Manual Measurements`;
+  if (el.detectedTypesBadge) el.detectedTypesBadge.textContent = `${data.learned_types_count} Window Types Learned`;
 
-  el.fileInfoCard.classList.remove('hidden');
+  if (el.dropZone) el.dropZone.classList.add('hidden');
+  if (el.fileInfoCard) el.fileInfoCard.classList.remove('hidden');
+  if (el.tool2ProgressBox) el.tool2ProgressBox.classList.add('hidden');
+  if (el.tool2ErrorBox) el.tool2ErrorBox.classList.add('hidden');
 
-  // Workflow order: Show Section 2 (Execute Measurement Completion)
-  if (el.sectionExecute) el.sectionExecute.classList.remove('hidden');
-
-  // Hide Section 3 & 4 until user runs completion
+  // Hide Tag Summary & Viewer until user runs completion
   if (el.sectionTagSummary) el.sectionTagSummary.classList.add('hidden');
   if (el.sectionViewer) el.sectionViewer.classList.add('hidden');
   if (el.completionSuccessCard) el.completionSuccessCard.classList.add('hidden');
@@ -607,8 +612,8 @@ function applyAnalysisData(data) {
     loadPagePreview(0);
   }
 
-  // Smooth scroll to Section 2
-  el.sectionExecute.scrollIntoView({ behavior: 'smooth' });
+  // Smooth scroll to Step 2
+  if (el.sectionUpload) el.sectionUpload.scrollIntoView({ behavior: 'smooth' });
 }
 
 function renderTagSummaryTable(items, resetStatusFilter = false) {
@@ -1125,6 +1130,12 @@ async function runMeasurementCompletion() {
   };
 
   setLoading(true, 'Completing window area measurements with edge snapping and Bluebeam compatibility...');
+  if (el.tool2ErrorBox) el.tool2ErrorBox.classList.add('hidden');
+  if (el.completionSuccessCard) el.completionSuccessCard.classList.add('hidden');
+  if (el.tool2ProgressBox) el.tool2ProgressBox.classList.remove('hidden');
+  if (el.tool2Spinner) el.tool2Spinner.classList.remove('hidden');
+  if (el.tool2StatusText) el.tool2StatusText.textContent = 'Running Tool 2: matching corners, snapping to vector linework, and generating Bluebeam markups...';
+
   try {
     const res = await fetch(apiUrl('/api/process'), {
       method: 'POST',
@@ -1139,6 +1150,9 @@ async function runMeasurementCompletion() {
       state.addedAnnotations = data.added_annotations || [];
       state.tagSummary = data.tag_summary || [];
 
+      if (el.tool2Spinner) el.tool2Spinner.classList.add('hidden');
+      if (el.tool2StatusText) el.tool2StatusText.textContent = `Completed: ${data.added_count} window measurements added (${data.snapped_count} snapped to edges).`;
+
       // Update success card
       el.metricAddedCount.textContent = data.added_count;
       el.metricTotalWindows.textContent = data.added_count + state.manualRecords.length;
@@ -1149,21 +1163,27 @@ async function runMeasurementCompletion() {
       if (el.btnExportCSV) el.btnExportCSV.href = apiUrl('/api/export-csv');
       if (el.btnExportTagSummary) el.btnExportTagSummary.href = apiUrl('/api/export-tag-summary');
 
-      // Render Tag Summary in Section 3
+      // Render Tag Summary
       renderTagSummaryTable(state.tagSummary, true);
       if (el.sectionTagSummary) el.sectionTagSummary.classList.remove('hidden');
 
-      // Show Section 4 (Viewer) and refresh with engine markups
+      // Show Viewer and refresh with engine markups
       if (el.sectionViewer) el.sectionViewer.classList.remove('hidden');
       loadPagePreview(state.currentPage);
 
-      // Smooth scroll to Section 3 (Tag Summary)
+      // Smooth scroll to Tag Summary
       el.sectionTagSummary.scrollIntoView({ behavior: 'smooth' });
     } else {
-      alert('Completion error: ' + (data.error || 'Failed to complete measurements'));
+      if (el.tool2Spinner) el.tool2Spinner.classList.add('hidden');
+      if (el.tool2StatusText) el.tool2StatusText.textContent = 'Failed';
+      if (el.tool2ErrorText) el.tool2ErrorText.textContent = data.error || 'Failed to complete measurements';
+      if (el.tool2ErrorBox) el.tool2ErrorBox.classList.remove('hidden');
     }
   } catch (err) {
-    alert('Execution failed: ' + err.message);
+    if (el.tool2Spinner) el.tool2Spinner.classList.add('hidden');
+    if (el.tool2StatusText) el.tool2StatusText.textContent = 'Failed';
+    if (el.tool2ErrorText) el.tool2ErrorText.textContent = err.message;
+    if (el.tool2ErrorBox) el.tool2ErrorBox.classList.remove('hidden');
   } finally {
     setLoading(false);
   }
@@ -1216,6 +1236,45 @@ function debounce(fn, ms) {
 // ----------------------------------------------------
 // TOOL 1 (STEP 1: PROPOSE WINDOW EXAMPLES)
 // ----------------------------------------------------
+function resetStep1Selection() {
+  if (state.tool1PollTimer) {
+    clearInterval(state.tool1PollTimer);
+    state.tool1PollTimer = null;
+  }
+  state.tool1File = null;
+  state.tool1JobId = null;
+  state.tool1CloseupPages = [];
+  state.tool1CloseupIndex = 0;
+  if (el.tool1FileInput) el.tool1FileInput.value = '';
+  if (el.tool1CloseupsHeader) el.tool1CloseupsHeader.classList.add('hidden');
+  if (el.btnRunTool1) el.btnRunTool1.disabled = false;
+  if (el.tool1FileBar) el.tool1FileBar.classList.add('hidden');
+  if (el.tool1ProgressBox) el.tool1ProgressBox.classList.add('hidden');
+  if (el.tool1ErrorBox) el.tool1ErrorBox.classList.add('hidden');
+  if (el.tool1ResultBox) el.tool1ResultBox.classList.add('hidden');
+  if (el.tool1DropZone) el.tool1DropZone.classList.remove('hidden');
+}
+
+function resetStep2Selection() {
+  state.filename = null;
+  state.pageCount = 0;
+  state.summaryTypes = [];
+  state.manualRecords = [];
+  state.addedAnnotations = [];
+  state.tagSummary = [];
+  state.hasCompleted = false;
+  state.addedCount = 0;
+  state.snappedCount = 0;
+  if (el.fileInput) el.fileInput.value = '';
+  if (el.fileInfoCard) el.fileInfoCard.classList.add('hidden');
+  if (el.tool2ProgressBox) el.tool2ProgressBox.classList.add('hidden');
+  if (el.tool2ErrorBox) el.tool2ErrorBox.classList.add('hidden');
+  if (el.completionSuccessCard) el.completionSuccessCard.classList.add('hidden');
+  if (el.sectionTagSummary) el.sectionTagSummary.classList.add('hidden');
+  if (el.sectionViewer) el.sectionViewer.classList.add('hidden');
+  if (el.dropZone) el.dropZone.classList.remove('hidden');
+}
+
 function selectTool1File(file) {
   if (!state.serverAvailable) {
     showServerRequiredModal(file.name);
@@ -1338,39 +1397,58 @@ function renderTool1Results(jobId, data) {
   const rows = data.report_rows || [];
   const proposed = rows.filter(r => r.confidence !== 'not proposed');
   const lowMed = proposed.filter(r => r.confidence === 'Low' || r.confidence === 'Medium');
+  const closeups = data.closeup_pages || [];
+
+  state.tool1CloseupPages = closeups;
+  state.tool1CloseupIndex = 0;
 
   if (el.tool1ProposedCount) el.tool1ProposedCount.textContent = proposed.length;
   if (el.tool1LowMedCount) el.tool1LowMedCount.textContent = lowMed.length;
   if (el.btnDownloadTool1Examples) el.btnDownloadTool1Examples.href = apiUrl(`/api/examples/${jobId}/download/examples`);
   if (el.btnDownloadTool1Report) el.btnDownloadTool1Report.href = apiUrl(`/api/examples/${jobId}/download/report`);
 
-  if (el.tbodyTool1Report) {
-    el.tbodyTool1Report.innerHTML = '';
-    if (rows.length === 0) {
-      el.tbodyTool1Report.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--ob-text-muted);padding:16px;">No report rows found</td></tr>';
-    } else {
-      rows.forEach(r => {
-        const tr = document.createElement('tr');
-        const conf = (r.confidence || '').toLowerCase();
-        const badgeCls = conf === 'high' ? 'high' : (conf === 'medium' ? 'medium' : (conf === 'low' ? 'low' : 'skipped'));
-        const agreeTxt = r.agree && r.checked ? `${r.agree}/${r.checked}` : '-';
-        tr.innerHTML = `
-          <td><span class="type-badge">${r.tag || ''}</span></td>
-          <td><span class="conf-badge ${badgeCls}">${r.confidence || ''}</span></td>
-          <td>${agreeTxt}</td>
-          <td>${r.on_sheet || '-'}</td>
-          <td>${r.width || '-'}</td>
-          <td>${r.height || '-'}</td>
-          <td>${r.area || '-'}</td>
-          <td>${r.page || '-'}</td>
-          <td>${r.note || '-'}</td>
-        `;
-        el.tbodyTool1Report.appendChild(tr);
-      });
-    }
+  if (el.selectTool1CloseupPage) {
+    el.selectTool1CloseupPage.innerHTML = '';
+    closeups.forEach((_, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx;
+      opt.textContent = `${idx + 1}`;
+      el.selectTool1CloseupPage.appendChild(opt);
+    });
   }
+  if (el.lblTool1CloseupTotal) el.lblTool1CloseupTotal.textContent = Math.max(1, closeups.length);
+
+  showTool1CloseupPage(0);
 
   if (el.tool1ResultBox) el.tool1ResultBox.classList.remove('hidden');
+}
+
+function showTool1CloseupPage(index) {
+  const pages = state.tool1CloseupPages || [];
+  if (!el.tool1CloseupsContainer) return;
+  el.tool1CloseupsContainer.innerHTML = '';
+
+  if (pages.length === 0) {
+    if (el.tool1CloseupsHeader) el.tool1CloseupsHeader.classList.add('hidden');
+    el.tool1CloseupsContainer.innerHTML = '<div style="text-align:center;color:var(--ob-text-muted);padding:16px;">No Close-ups pages found in report.</div>';
+    return;
+  }
+
+  const idx = Math.max(0, Math.min(index, pages.length - 1));
+  state.tool1CloseupIndex = idx;
+
+  if (el.tool1CloseupsHeader) el.tool1CloseupsHeader.classList.remove('hidden');
+  if (el.selectTool1CloseupPage) el.selectTool1CloseupPage.value = String(idx);
+  if (el.btnTool1PrevCloseup) el.btnTool1PrevCloseup.disabled = idx === 0;
+  if (el.btnTool1NextCloseup) el.btnTool1NextCloseup.disabled = idx >= pages.length - 1;
+
+  const card = document.createElement('div');
+  card.className = 'tool1-closeup-page';
+  const img = document.createElement('img');
+  img.src = pages[idx];
+  img.alt = `Tool 1 Close-ups Page ${idx + 1}`;
+  card.appendChild(img);
+  el.tool1CloseupsContainer.appendChild(card);
 }
 
 async function sendTool1ToStep2() {

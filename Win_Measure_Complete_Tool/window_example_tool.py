@@ -53,7 +53,8 @@ except ImportError as exc:  # pragma: no cover
 # ============================================================== settings ===========================================
 TAG_REGEX = r'^[A-Za-z]{1,4}\d{1,4}(?:-[A-Za-z0-9]{1,6})?$'
 COLOR, FILL_ALPHA, LINE_W = (0.0, 0.31, 1.0), 0.30, 1.0      # #0050FF proposal colour, 30 % fill, 1 pt outline
-S = 8                       # raster px per pt
+S = 8                       # raster px per normalised unit (unit = 1 pt on a 1/16" sheet)
+REF_PTFT = 4.5              # all geometry constants below were tuned on 1/16" = 1'-0" (4.5 pt per foot)
 DARK = 175
 INK_GRAY, INK_SAT = 150, 60 # drafting ink = dark and unsaturated
 MINLEN = 1.2                # pt, shortest line read
@@ -105,9 +106,12 @@ def covn(L, c, a, b, tol=.3):
 
 class Tile:
     """the drawing around one tag, read into horizontal and vertical lines"""
-    def __init__(self, dl, prect, cx, cy, symbols=()):
-        clip = fitz.Rect(cx - TILE, cy - TILE, cx + TILE, cy + TILE) & prect
-        pm = dl.get_pixmap(matrix=fitz.Matrix(S, S), colorspace=fitz.csRGB, alpha=False, clip=clip)
+    def __init__(self, dl, prect, cx, cy, symbols=(), k=1.0):
+        # cx, cy, symbols and every result are in normalised units; the page is read at S / k px per pt so that
+        # one unit of drawing always covers the same real-world size as one pt on a 1/16" sheet
+        clip = fitz.Rect((cx - TILE) * k, (cy - TILE) * k, (cx + TILE) * k, (cy + TILE) * k) & prect
+        pm = dl.get_pixmap(matrix=fitz.Matrix(S / k, S / k), colorspace=fitz.csRGB, alpha=False, clip=clip)
+        prect = fitz.Rect(prect.x0 / k, prect.y0 / k, prect.x1 / k, prect.y1 / k)
         C = np.frombuffer(pm.samples, np.uint8).reshape(pm.height, pm.width, 3).astype(np.int16)
         G = (C.sum(axis=2) // 3).astype(np.uint8)
         G = np.where((G < INK_GRAY) & (C.max(axis=2) - C.min(axis=2) < INK_SAT), G, 255).astype(np.uint8)
@@ -355,10 +359,20 @@ def tag_symbol_sides(page, centres):
     return out
 
 
-def find_window(dl, prect, tc, tag_centres, symbols):
-    """window (outer frame rectangle) around one tag, or None"""
+def find_window(dl, prect, tc, tag_centres, symbols, k=1.0):
+    """window around one tag, or None. Inputs in page pt; works internally in units of pt / k; results returned in pt."""
+    f = _find_window_u(dl, prect, (tc[0] / k, tc[1] / k), [(x / k, y / k) for x, y in tag_centres],
+                       [(q[0], q[1] / k, q[2] / k, q[3] / k) for q in symbols], k)
+    if f is None or k == 1.0: return f
+    sc = lambda c: {q: (v * k if q in ('ix0', 'ix1', 'iy0', 'iy1', 'ox0', 'ox1', 'oy0', 'oy1', 'gap') else v) for q, v in c.items()}
+    cells = [sc(c) for c in f['cells']]
+    key = lambda c: (round(c['ix0'] / k, 1), round(c['iy0'] / k, 1), round(c['ix1'] / k, 1), round(c['iy1'] / k, 1))
+    return dict(cells=cells, depth=f['depth'], ext=f['ext'] * k if f['ext'] else None, key=key)
+
+
+def _find_window_u(dl, prect, tc, tag_centres, symbols, k):
     cx, cy = tc
-    T = Tile(dl, prect, cx, cy, symbols)
+    T = Tile(dl, prect, cx, cy, symbols, k)
     seed = None
     for dx, dy in ((0, 0), (0, -1.5), (0, 1.5), (-1.5, 0), (1.5, 0), (0, -3), (0, 3), (-3, 0), (3, 0)):
         seed = T.cell_at(cx + dx, cy + dy)
@@ -584,7 +598,7 @@ def main():
     last = time.time()
     for k, t in enumerate(todo):
         I = page_info[t['page']]
-        t['found'] = find_window(I['dl'], doc[t['page']].rect, t['c'], I['centres'], symbols[t['page']])
+        t['found'] = find_window(I['dl'], doc[t['page']].rect, t['c'], I['centres'], symbols[t['page']], I['ptft'] / REF_PTFT)
         if time.time() - last > 15 or k == len(todo) - 1:
             el = time.time() - t0; log(f'  {k + 1}/{len(todo)}  ({el:.0f}s elapsed, ~{el / (k + 1) * (len(todo) - k - 1):.0f}s left)'); last = time.time()
 

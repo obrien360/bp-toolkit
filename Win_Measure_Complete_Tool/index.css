@@ -1284,3 +1284,24 @@ button {
   background: #F1F5F9;
   color: #475569;
 }
+
+.tool1-closeups-container {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tool1-closeup-page {
+  border: 1px solid var(--ob-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.tool1-closeup-page img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
